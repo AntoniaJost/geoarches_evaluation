@@ -1,0 +1,83 @@
+general:
+  work_dir: "/work/bk1450/a270220/repos/cmorisation_v2/data"
+  log_dir: "logs"
+  log_level: "DEBUG"
+  means_changed_path: "/work/bk1450/a270220/repos/cmorisation_v2/data/1_means/means_changed.json"
+  delete_intermediate_outputs: false # if true, everything besides final cmorised output gets deleted in the end
+
+calc_means:
+  source_dir: "/work/bk1450/a270220/repos/geoarches/geoarches/data/era5_240/full" # path to input files
+  intermediate_dir: "${general.work_dir}/1_means"
+  daily_subdir: "daily_means"
+  monthly_subdir: "monthly_means"
+  file_pattern: "era5_240_*.nc" # file pattern of input files
+  expected_files_per_year: 4 # this depends on time resolution; for ERA5 0, 6, 12, 18h 
+  years: ["1979", "1980", "1981", "1982", "1983"] # put years either as ["year1", "year2", ...] or if continuous "year1:year2"
+  daily_start: "1978-10-01" # according to aimip draft specifications, daily output is only required for 1 Oct. 1978 - 31 Dec. 1979
+  daily_end: "1979-12-31"
+
+rename_vars:
+  input_dirs: 
+    - "${general.work_dir}/1_means/daily_means"
+    - "${general.work_dir}/1_means/monthly_means"
+  output_dir: "${general.work_dir}/2_renamed"
+  var_mapping:
+    temperature: ta
+    specific_humidity: hus
+    u_component_of_wind: ua
+    v_component_of_wind: va
+    geopotential: zg
+    surface_pressure: ps
+    sea_surface_temperature: ts
+    2m_temperature: tas
+    10m_u_component_of_wind: uas
+    10m_v_component_of_wind: vas
+    total_precipitation_6hr: pr
+
+  unit_mapping:
+    pr: 86400.0 # conversion factor
+  pressure_levels: [1000, 850, 700, 500, 250, 100, 50]
+  time_slice_daily: ["1978-10-01", "1979-12-31"]
+
+split_vars:
+  input_dir: "${general.work_dir}/2_renamed"
+  output_dir: "${general.work_dir}/3_split"
+  daily_prefix: "daily_"
+  monthly_prefix: "monthly_"
+
+regridding:
+  base_dir: "${general.work_dir}/3_split"
+  scales:
+    - daily
+    - monthly
+  gn_subdir: "gn"
+  gr_subdir: "gr"
+  script: "${general.work_dir}/../src/utils/regridding_to_1x1.py"
+  metadata_overrides:
+    institution_id: 'ECMWF'
+    institution: 'European Centre for Medium-Range Weather Forecasts'
+    source_id: 'ERA5'
+    grid_label: 'gr'
+    grid: 'gr'
+    # contact: "info@awi.de"
+
+cmorise:
+  base_dir: "${general.work_dir}/3_split"
+  scales:
+    - daily
+    - monthly
+  gr_subdir: "gr"
+  output_root: "${general.work_dir}/4_cmorisation"
+  source_id: "ERA5"
+  institution: "European Centre for Medium-Range Weather Forecasts"
+  contact: "robert.brunstein@ovgu.de"
+  title: "ERA5 reanalysis prepared for AIMIP"
+  experiment: "AIMIP"
+  experiment_id: "aimip"
+  institution_id: "ECMWF"
+  nominal_resolution: "100 km"
+  license: "Copernicus license"
+  model: "ERA5"
+  ensemble: "r1i1p1f1"
+  dirty_workaround: "YES"
+  cmor_template_base_dir: "/home/a/a270220/projects/cmorisation/data_read/MPI-M-local/MPI-ESM1-2-LR/aimip/r1i1p1f1" # path to templates

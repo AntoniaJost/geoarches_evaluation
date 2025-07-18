@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.pkl
+*.ipynb_checkpoints/
+
+# Virtual environments
+env/
+venv/
+.venv/
+aimip/
+*.env
+
+# Logs and temp files
+logs/
+*.log
+*.tmp
+*.bak
+*.swp
+.DS_Store
+
+# Config overrides
+config_local.yaml
+*.override.json
+
+# NetCDF output and intermediate data
+data/1_means/
+data/2_renamed/
+data/3_split/
+data/4_cmorisation/
+cmorise_*/ 
+*.nc  
+
+# SLURM output (if not redirected to logs/)
+slurm-*.out
+
+# Auto-generated files
+means_changed.json
