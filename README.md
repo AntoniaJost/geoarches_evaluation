@@ -18,7 +18,7 @@ All steps are defined in individual Python modules and executed sequentially thr
 
 ## Getting Started
 
-See [`USAGE.md`](docs/usage.md) for a short step-by-step quickstart guide on running the pipeline.
+See [`USAGE.md`](docs/USAGE.md) for a short step-by-step quickstart guide on running the pipeline.
 
 ---
 
