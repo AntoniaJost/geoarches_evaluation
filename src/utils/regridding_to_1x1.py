@@ -9,6 +9,7 @@ from datetime import datetime
 import pytz
 import ast
 import sys
+from logger import WARN
 
 # Setting up logger - making sure it logs into same pipeline.log as rest of repo
 _here = os.path.dirname(__file__)
@@ -36,12 +37,12 @@ def create_bounds(coord_vals):
 
 def generate_example_regridded_data(template_ds):
     """Generates example regridded data based on a template dataset."""
-    logger.info("--- Generating Example Regridded Data ---")
+    logger.info("[Regridding] Generating Example Regridded Data")
     
     main_var_name = template_ds.attrs.get('variable_id')
     if not main_var_name or main_var_name not in template_ds.data_vars:
         raise ValueError("Cannot determine main variable from 'variable_id' attribute in template.")
-    logger.debug(f"Identified main variable for interpolation: {main_var_name}")
+    logger.debug(f"[Regridding] Identified main variable for interpolation: {main_var_name}")
 
     # Define the target regular grid
     new_lon = np.linspace(0.5, 359.5, 360)
@@ -56,17 +57,17 @@ def generate_example_regridded_data(template_ds):
     
     regridded_ds = regridded_da.to_dataset(name=main_var_name)
 
-    logger.debug("Example data generated.")
+    logger.debug("[Regridding] Example data generated.")
     return regridded_ds
 
 def create_cmor_file(template_ds, regridded_ds, output_file, metadata_overrides):
     """Creates a CMOR-compliant NetCDF file from a template and new data."""
-    logger.info(f"--- Creating CMOR File: {output_file} ---")
+    logger.info(f"[Regridding] Creating CMOR File: {output_file}")
     
     # Determine the main variable name robustly
     main_var_name = template_ds.attrs.get('variable_id')
     if not main_var_name or main_var_name not in regridded_ds.data_vars:
-        logger.warning(f"Warning: 'variable_id' attribute not found or not in regridded data. Inferring main variable.")
+        logger.warning(f"{WARN} [Regridding] 'variable_id' attribute not found or not in regridded data. Inferring main variable.")
         candidate_vars = {
             name: da.ndim 
             for name, da in regridded_ds.data_vars.items() 
@@ -77,16 +78,16 @@ def create_cmor_file(template_ds, regridded_ds, output_file, metadata_overrides)
         main_var_name = max(candidate_vars, key=candidate_vars.get)
 
     cmor_ds = regridded_ds.copy(deep=True)
-    logger.debug(f"Main data variable: {main_var_name}")
+    logger.debug(f"[Regridding] Main data variable: {main_var_name}")
 
     cmor_ds.attrs = template_ds.attrs.copy()
-    logger.debug("Copied global attributes.")
+    logger.debug("[Regridding] Copied global attributes.")
 
-    logger.info("\n--- Copying Variable Attributes and Restoring Missing Value ---")
+    logger.info("[Regridding] Copying Variable Attributes and Restoring Missing Value")
     for var_name in cmor_ds.variables:
         if var_name in template_ds:
             cmor_ds[var_name].attrs = template_ds[var_name].attrs.copy()
-            logger.debug(f"  - Copied attributes for: {var_name}")
+            logger.debug(f"[Regridding] Copied attributes for: {var_name}")
 
     # Restore missing_value attribute on main variable, which might not be in attrs
     if main_var_name in cmor_ds.data_vars and main_var_name in template_ds:
@@ -94,49 +95,49 @@ def create_cmor_file(template_ds, regridded_ds, output_file, metadata_overrides)
         fill_value = template_encoding.get('_FillValue') or template_encoding.get('missing_value')
         if fill_value is not None:
             cmor_ds[main_var_name].attrs['missing_value'] = fill_value
-            logger.debug(f"  - Ensured 'missing_value' attribute exists for '{main_var_name}' with value {fill_value}")
+            logger.debug(f"[Regridding] Ensured 'missing_value' attribute exists for '{main_var_name}' with value {fill_value}")
 
-    logger.info("\n--- Copying Non-Spatial Variables from Template ---")
+    logger.info("[Regridding] Copying Non-Spatial Variables from Template")
     template_vars_to_copy = [v for v in template_ds.variables if v not in cmor_ds.variables]
     for var_name in template_vars_to_copy:
         if var_name == 'height': continue # Handle height separately
         cmor_ds[var_name] = template_ds[var_name]
-        logger.debug(f"  - Copied variable: {var_name} with dims {template_ds[var_name].dims}")
+        logger.debug(f"[Regridding] Copied variable: {var_name} with dims {template_ds[var_name].dims}")
 
     if 'height' in template_ds:
-        logger.debug("\n--- Processing 'height' coordinate ---")
+        logger.debug("[Regridding] Processing 'height' coordinate")
         original_height = template_ds['height']
-        logger.debug(f"Original height dims: {original_height.dims}")
+        logger.debug(f"[Regridding] Original height dims: {original_height.dims}")
         scalar_height = original_height.isel({dim: 0 for dim in original_height.dims}, drop=True)
         scalar_height.attrs = original_height.attrs
         cmor_ds['height'] = scalar_height
         cmor_ds[main_var_name].attrs['coordinates'] = 'height'
-        logger.debug(f"Processed height as scalar with dims: {cmor_ds['height'].dims}")
+        logger.debug(f"[Regridding] Processed height as scalar with dims: {cmor_ds['height'].dims}")
 
-    logger.info("\n--- Creating new lat/lon bounds ---")
+    logger.info("[Regridding] Creating new lat/lon bounds")
     cmor_ds['lat_bnds'] = xr.DataArray(create_bounds(cmor_ds['lat'].values), dims=['lat', 'bnds'], name='lat_bnds')
     cmor_ds['lon_bnds'] = xr.DataArray(create_bounds(cmor_ds['lon'].values), dims=['lon', 'bnds'], name='lon_bnds')
     cmor_ds['lat'].attrs['bounds'] = 'lat_bnds'
     cmor_ds['lon'].attrs['bounds'] = 'lon_bnds'
-    logger.debug("  - Created 'lat_bnds' and 'lon_bnds'")
+    logger.debug("[Regridding] Created 'lat_bnds' and 'lon_bnds'")
 
-    logger.info("\n--- Applying Metadata Overrides ---")
+    logger.info("[Regridding] Applying Metadata Overrides")
     for key, value in metadata_overrides.items():
         old = cmor_ds.attrs.get(key, "<not set>")
-        logger.debug(f"  - Setting global attribute '{key}': '{old}' -> '{value}'")
+        logger.debug(f"[Regridding] Setting global attribute '{key}': '{old}' -> '{value}'")
         cmor_ds.attrs[key] = value
 
     history_update = f"{datetime.now(pytz.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}: Data regridded and CMORized."
     cmor_ds.attrs['history'] = f"{history_update} ; {template_ds.attrs.get('history', '')}"
-    logger.debug("\nUpdated history attribute.")
+    logger.debug("[Regridding] Updated history attribute.")
 
     # Demote 'height' from a coordinate to a data variable to prevent xarray
     # from automatically adding 'coordinates' attributes to other variables.
     if 'height' in cmor_ds.coords:
         cmor_ds = cmor_ds.reset_coords(['height'])
-        logger.debug("\nDemoted 'height' from coordinate to data variable to fix attribute propagation.")
+        logger.debug("[Regridding] Demoted 'height' from coordinate to data variable to fix attribute propagation.")
 
-    logger.info("\n--- Preparing Encodings and Final Cleanup ---")
+    logger.info("[Regridding] Preparing Encodings and Final Cleanup")
     encoding = {}
     valid_keys = {'_FillValue', 'dtype', 'scale_factor', 'add_offset', 'units', 'calendar', 'zlib', 'complevel', 'shuffle', 'fletcher32', 'contiguous', 'chunksizes', 'least_significant_digit'}
 
@@ -147,37 +148,37 @@ def create_cmor_file(template_ds, regridded_ds, output_file, metadata_overrides)
         # General cleanup
         if "_FillValue" in var_encoding and var_encoding["_FillValue"] is None:
             del var_encoding["_FillValue"]
-            logger.debug(f"  - Removed _FillValue from encoding for: {var_name}")
+            logger.debug(f"[Regridding] Removed _FillValue from encoding for: {var_name}")
 
         if "chunksizes" in var_encoding and var_encoding["chunksizes"] is None:
             del var_encoding["chunksizes"]
-            logger.debug(f"  - Removed invalid chunksizes from: {var_name}")
+            logger.debug(f"[Regridding] Removed invalid chunksizes from: {var_name}")
 
         if "contiguous" in var_encoding:
             del var_encoding["contiguous"]
-            logger.debug(f"  - Removed 'contiguous' from encoding for: {var_name}")
+            logger.debug(f"[Regridding] Removed 'contiguous' from encoding for: {var_name}")
 
         # Drop bad compression keys if chunking isn't defined
         if "zlib" in var_encoding and "chunksizes" not in var_encoding:
             for key in ["zlib", "shuffle", "complevel", "fletcher32"]:
                 var_encoding.pop(key, None)
-            logger.debug(f"  - Removed compression-related keys from: {var_name}")
+            logger.debug(f"[Regridding] Removed compression-related keys from: {var_name}")
 
         # Remove 'coordinates' attr for non-main variables
         if "coordinates" in da.attrs and var_name != main_var_name:
             del da.attrs["coordinates"]
-            logger.debug(f"  - Removed 'coordinates' attribute from: {var_name}")
+            logger.debug(f"[Regridding] Removed 'coordinates' attribute from: {var_name}")
 
         # Exclude time from encoding altogether
         if var_name == "time":
-            logger.debug("  - Skipping encoding for 'time'")
+            logger.debug("[Regridding] Skipping encoding for 'time'")
             continue
 
         encoding[var_name] = {k: v for k, v in var_encoding.items() if k in valid_keys}
 
-    logger.info("\n--- Saving to NetCDF ---")
+    logger.info("[Regridding] Saving to NetCDF")
     cmor_ds.to_netcdf(output_file, encoding=encoding, unlimited_dims=['time'])
-    logger.info(f"Successfully created {output_file}")
+    logger.info(f"[Regridding] Successfully created {output_file}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Create a CMOR-compliant NetCDF file from a template.')
