@@ -9,14 +9,13 @@ from datetime import datetime
 import pytz
 import ast
 import sys
-from logger import WARN
 
 # Setting up logger - making sure it logs into same pipeline.log as rest of repo
 _here = os.path.dirname(__file__)
 project_root = os.path.abspath(os.path.join(_here, "..", ".."))
 sys.path.insert(0, project_root)
 from src.config_loader import ConfigLoader
-from src.logger import setup_logger
+from src.logger import setup_logger, WARN
 # Attaching logs from here to overall logfile
 cfg = ConfigLoader("config.yaml")
 general = cfg.get("general") if hasattr(cfg, "get") else cfg.general

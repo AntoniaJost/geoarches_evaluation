@@ -62,6 +62,13 @@ Each step checks whether its outputs already exist and skips processing unless f
 
 ---
 
+## Known Bottlenecks
+
+With the newly integrated option of selecting whether to cmorise on native or 1x1 degree grid comes a bottleneck that has to be treated manually (for the moment).
+If you set either ```use_native``` or ```use_regridded``` to ```true``` for your first run, then switch to the other one and run it **for a different year**, you will face an issue in your third run as now your ```data/4_cmorisation/[var]``` ```gn``` and ```gr``` folders contain different time spans. It is recommended to just run ```rm -r data/4_cmorisation/*``` and do another clean run from scratch.
+
+---
+
 ## Attribution
 
 This pipeline incorporates ideas and adapted code from:
