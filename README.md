@@ -81,4 +81,4 @@ Please cite his work where appropriate.
 
 ## License
 
-Licensed under the GNU AGPL v3.0.
+Licensed under the Apache License 2.0.
