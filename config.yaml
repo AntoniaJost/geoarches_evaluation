@@ -12,7 +12,7 @@ calc_means:
   monthly_subdir: "monthly_means"
   file_pattern: "era5_240_*.nc" # file pattern of input files
   expected_files_per_year: 4 # this depends on time resolution; for ERA5 0, 6, 12, 18h 
-  years: ["1979", "1980", "1981", "1982", "1983"] # put years either as ["year1", "year2", ...] or if continuous "year1:year2"
+  years: "1979:2021" #["1979", "1980", "1981", "1982", "1983"] # put years either as ["year1", "year2", ...] or if continuous "year1:year2"
   daily_start: "1978-10-01" # according to aimip draft specifications, daily output is only required for 1 Oct. 1978 - 31 Dec. 1979
   daily_end: "1979-12-31"
 
