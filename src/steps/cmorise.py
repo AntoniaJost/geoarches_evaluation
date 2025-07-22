@@ -142,36 +142,43 @@ class CmoriseStep(Step):
                         self.logger.warning(f"{WARN} [CmoriseStep] No template for variable '{variable}', skipping {fpath}")
                         continue
 
-                    # adjust template to match time dimension of data
-                    # OLD VERSION, WORKS GREAT! BUT ONLY IF TEMPLATE IS TOO LONG
+                    # check template length
                     tpl_ds = xr.open_dataset(template_path)
                     tpl_time_len = tpl_ds.sizes.get('time', None)
                     tpl_ds.close()
-                    # if tpl_time_len != user_data_array.shape[0]:
-                    #     sliced_tpl = os.path.join(temp_dir, os.path.basename(template_path).replace('.nc','_sliced.nc'))
-                    #     if not os.path.exists(sliced_tpl):
-                    #         self.logger.info(f"[CmoriseStep] Slicing template to {user_data_array.shape[0]} timesteps to match time dimension of input")
-                    #         with xr.open_dataset(template_path) as ft:
-                    #             sliced = ft.isel(time=slice(0, user_data_array.shape[0]))
-                    #             sliced.to_netcdf(sliced_tpl)
-                    #     template_to_use = sliced_tpl
-                    # else:
-                    #     template_to_use = template_path
 
-                    # NEW VERSION, ANTICIPATING THAT TEMPLATE MIGHT BE TOO SHORT - NOT TESTED for that case yet!!!!
-                    sliced_tpl = os.path.join(temp_dir, os.path.basename(template_path).replace('.nc','_sliced.nc'))
-                    if tpl_time_len != user_data_array.shape[0]:
+                    # if template length ≠ user data length, build a sliced/extended template
+                    sliced_tpl = os.path.join(
+                        temp_dir,
+                        os.path.basename(template_path).replace('.nc','_sliced.nc')
+                    )
+                    if tpl_time_len is not None and tpl_time_len != user_data_array.shape[0]:
                         if not os.path.exists(sliced_tpl):
-                            self.logger.info(f"[CmoriseStep] Adjusting template: {tpl_time_len} → {user_data_array.shape[0]} timesteps")
+                            self.logger.info(
+                                f"[CmoriseStep] Adjusting template: {tpl_time_len} → {user_data_array.shape[0]} timesteps")
                             with xr.open_dataset(template_path) as ft:
                                 if tpl_time_len > user_data_array.shape[0]:
-                                    # Template too long: slice
+                                    # Template too long: simple slice
                                     sliced = ft.isel(time=slice(0, user_data_array.shape[0]))
                                 else:
-                                    # Template too short: repeat
-                                    reps = int(np.ceil(user_data_array.shape[0] / tpl_time_len))
-                                    ft_repeated = xr.concat([ft] * reps, dim="time")
-                                    sliced = ft_repeated.isel(time=slice(0, user_data_array.shape[0]))
+                                    # Template too short: repeat & re‑attach coords
+                                    coord_drop = ['time_bnds']
+                                    tpl_data   = ft.drop_vars(coord_drop + ['lat_bnds','lon_bnds'], errors='ignore')
+                                    reps       = int(np.ceil(user_data_array.shape[0] / tpl_time_len))
+                                    data_rep   = xr.concat([tpl_data]*reps, dim="time")
+                                    sliced     = data_rep.isel(time=slice(0, user_data_array.shape[0]))
+
+                                    # restore real time from input file
+                                    with xr.open_dataset(fpath) as ds_in:
+                                        real_time = ds_in.time.values
+                                    sliced = sliced.assign_coords(time=('time', real_time))
+
+                                    # re‑attach spatial bounds
+                                    sliced = sliced.assign_coords(
+                                        lat_bnds = ft['lat_bnds'],
+                                        lon_bnds = ft['lon_bnds']
+                                    )
+
                                 sliced.to_netcdf(sliced_tpl)
                         template_to_use = sliced_tpl
                     else:
