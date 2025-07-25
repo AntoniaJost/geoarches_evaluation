@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import pandas as pd
 from datetime import datetime
 import xarray as xr
 from glob import glob
@@ -99,10 +100,48 @@ class CalcMeansStep(Step):
                 # Daily mean only for 1978 and 1979
                 if not skip_daily:
                     if year in ("1978", "1979"):
-                        ds_daily = ds
-                        if "time" in ds.coords:
-                            ds_daily = ds.sel(time=slice(start_daily, end_daily))
+                        ds_daily = ds.sel(time=slice(start_daily, end_daily))
                         ds_daily_mean = ds_daily.resample(time='1D').mean()
+
+                        # build daily time bounds: [date, date + 1 day]
+                        if 'time' in ds_daily_mean.coords:
+                            t0 = ds_daily_mean.time.values
+                            t1 = t0 + np.timedelta64(1, 'D')
+                            tb = np.stack([t0, t1], axis=1)
+                            ds_daily_mean = ds_daily_mean.assign_coords(
+                                time_bnds=(('time', 'bnds'), tb)
+                            )
+                            # ensure time_bnds is a data variable, not a coordinate
+                            ds_daily_mean = ds_daily_mean.reset_coords(names="time_bnds", drop=False)
+
+                            # clean all old encoding/attrs that cause conflicts
+                            for key in ['units', 'calendar']:
+                                ds_daily_mean['time'].attrs.pop(key, None)
+                                ds_daily_mean['time_bnds'].attrs.pop(key, None)
+                                ds_daily_mean['time'].encoding.pop(key, None)
+                                ds_daily_mean['time_bnds'].encoding.pop(key, None)
+
+                            # set attributes only related to metadata (not I/O)
+                            ds_daily_mean['time'].attrs.update({
+                                'bounds': 'time_bnds',
+                                'axis': 'T',
+                                'long_name': 'time',
+                                'standard_name': 'time'
+                            })
+
+                            # set encoding (required for writing correct NetCDF format)
+                            ds_daily_mean['time'].encoding.update({
+                                'units': 'days since 1850-1-1 00:00:00',
+                                'calendar': 'proleptic_gregorian',
+                                'dtype': 'double'
+                            })
+                            ds_daily_mean['time_bnds'].encoding.update({
+                                'units': 'days since 1850-1-1 00:00:00',
+                                'calendar': 'proleptic_gregorian',
+                                'dtype': 'double'
+                            })
+
+                        # save daily means
                         ds_daily_mean.to_netcdf(daily_out)
                         self.logger.info(f"{GREEN} [CalcMeansStep] Saved daily mean: {daily_out}")
                     else:
@@ -110,12 +149,51 @@ class CalcMeansStep(Step):
 
                 # monthly mean, always computed
                 if not skip_monthly:
-                    ds.resample(time='1MS').mean().to_netcdf(monthly_out)
+                    ds_monthly = ds.resample(time='1MS').mean()
+
+                    # build monthly time bounds: [start_of_month, start_of_next_month]
+                    if 'time' in ds_monthly.coords:
+                        idx = ds_monthly.time.to_index()
+                        start = (idx - pd.offsets.MonthEnd(1)) + pd.Timedelta(days=1)
+                        end = idx + pd.Timedelta(days=1)
+                        mb = np.stack([start.values, end.values], axis=1)
+                        ds_monthly = ds_monthly.assign_coords(
+                            time_bnds=(('time', 'bnds'), mb)
+                        )
+                        ds_monthly = ds_monthly.reset_coords(names="time_bnds", drop=False)
+
+                        # clean all old encoding/attrs that cause conflicts
+                        for key in ['units', 'calendar']:
+                            ds_monthly['time'].attrs.pop(key, None)
+                            ds_monthly['time_bnds'].attrs.pop(key, None)
+                            ds_monthly['time'].encoding.pop(key, None)
+                            ds_monthly['time_bnds'].encoding.pop(key, None)
+
+                        # set descriptive metadata
+                        ds_monthly['time'].attrs.update({
+                            'bounds': 'time_bnds',
+                            'axis': 'T',
+                            'long_name': 'time',
+                            'standard_name': 'time'
+                        })
+
+                        # set encoding for correct serialization
+                        ds_monthly['time'].encoding.update({
+                            'units': 'days since 1850-1-1 00:00:00',
+                            'calendar': 'proleptic_gregorian',
+                            'dtype': 'double'
+                        })
+                        ds_monthly['time_bnds'].encoding.update({
+                            'units': 'days since 1850-1-1 00:00:00',
+                            'calendar': 'proleptic_gregorian',
+                            'dtype': 'double'
+                        })
+
+                    # save monthly means
+                    ds_monthly.to_netcdf(monthly_out)
                     print(f"[CalcMeansStep] Saved monthly mean for {year}")
                     self.logger.info(f"{GREEN} [CalcMeansStep] Saved monthly mean: {monthly_out}")
-                else:
-                    print(f"[CalcMeansStep] Skipped monthly mean for {year} (already exists)")
-                    self.logger.info(f"[CalcMeansStep] Skipped monthly mean for {year}; already exists")
+
 
             except Exception as e:
                 self.logger.error(f"{RED} Failed processing {year}: {e}")
