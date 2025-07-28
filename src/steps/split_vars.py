@@ -49,6 +49,8 @@ class SplitVarsStep(Step):
 
             # loop over each variable and save it into its own file
             for var in ds.data_vars:
+                if var == "time_bnds":
+                    continue
                 out_dir = os.path.join(out_base, freq, var, 'gn')
                 os.makedirs(out_dir, exist_ok=True)
 
@@ -79,7 +81,13 @@ class SplitVarsStep(Step):
                     self.logger.warning(f"{RED} [SplitVarsStep] Overwriting empty file: {out_file}")
 
                 # Write single-variable dataset
-                var_ds = ds[[var]].copy()
+                vars_to_keep = [var]
+                # making sure time_bnds don't get lost
+                if "time_bnds" in ds.data_vars:
+                    vars_to_keep.append("time_bnds")
+
+                # Create dataset with both
+                var_ds = ds[vars_to_keep].copy()
                 var_ds.attrs['variable_id'] = var
                 var_ds.to_netcdf(out_file)
                 self.logger.info(f"{GREEN} [SplitVarsStep] Saved {out_file}")
