@@ -1,6 +1,7 @@
 import os
 import xarray as xr
 import pandas as pd
+import numpy as np
 import json
 from steps.step_base import Step
 from utils.change_tracker import get_force_rerun_flag
@@ -122,6 +123,10 @@ class RenameVarsStep(Step):
                     # save variable_id in global attrs (used in CMOR step)
                     for var in ds.data_vars:
                         ds.attrs['variable_id'] = var
+                        # assign missing_value attribute to each variable
+                        missing_val = np.float32(1e20)
+                        ds[var].attrs['missing_value'] = missing_val
+                        ds[var].encoding['_FillValue'] = missing_val
 
                     processed.append(ds)
 
