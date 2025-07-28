@@ -80,13 +80,17 @@ class RenameVarsStep(Step):
                     # rename variables based on mapping
                     ds = ds.rename({k: v for k, v in var_map.items() if k in ds.variables})
                     # retain only renamed variables
-                    keep = [v for v in var_map.values() if v in ds]
-                    ds = ds[keep]
+                    # keep = [v for v in var_map.values() if v in ds]
+                    # ds = ds[keep]
+                    keep = [v for v in var_map.values() if v in ds.data_vars]
+                    aux_vars = [v for v in ds.data_vars if v.endswith('_bnds')]
+                    ds = ds[keep + aux_vars]
 
                     # standardise dimensions
                     dim_renames = {}
                     if 'longitude' in ds.dims: dim_renames['longitude'] = 'lon'
-                    if 'latitude' in ds.dims:  dim_renames['latitude']  = 'lat'
+                    if 'latitude'  in ds.dims: dim_renames['latitude']  = 'lat'
+                    if 'level'     in ds.dims: dim_renames['level']     = 'plev'
                     if dim_renames: ds = ds.rename(dim_renames)
 
                     # Convert units for precipitation (from mm/day → kg/m²/s)
