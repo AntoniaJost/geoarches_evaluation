@@ -1,4 +1,4 @@
-# Besides some minor changes, this script is taken from Nikolay Koldunov and all credits belong to him!
+# Parts of this script are taken from Nikolay Koldunov and all credits belong to him!
 # Check out his repository: https://github.com/koldunovn/aimip (native_to_1degree.py)
 
 import xarray as xr
@@ -34,29 +34,44 @@ def create_bounds(coord_vals):
     bounds[-1, 1] = coord_vals[-1] + diffs[-1]
     return bounds
 
-def generate_example_regridded_data(template_ds):
-    """Generates example regridded data based on a template dataset."""
-    logger.info("[Regridding] Generating Example Regridded Data")
-    
-    main_var_name = template_ds.attrs.get('variable_id')
-    if not main_var_name or main_var_name not in template_ds.data_vars:
-        raise ValueError("Cannot determine main variable from 'variable_id' attribute in template.")
-    logger.debug(f"[Regridding] Identified main variable for interpolation: {main_var_name}")
 
-    # Define the target regular grid
-    new_lon = np.linspace(0.5, 359.5, 360)
-    new_lat = np.linspace(-89.5, 89.5, 180)
+def regrid_to_template_grid(native_ds: xr.Dataset, template_ds: xr.Dataset) -> xr.Dataset:
+    """
+    Regrid the main variable of a native-resolution ERA5 dataset to the grid of a CMIP6 template,
+    while preserving key coordinates and bounds like time_bnds, lat_bnds, lon_bnds.
+    """
+    # identify main variable name
+    var_name = list(native_ds.data_vars)[0]
 
-    # Add cyclic point for longitude to handle wrap-around
-    wrap_ds = xr.concat([template_ds, template_ds.isel(lon=0)], dim='lon', compat='override', coords='all')
-    wrap_ds['lon'] = np.append(template_ds['lon'], 360.0)
+    # regrid the data to the template lat/lon grid
+    regridded_da = native_ds[var_name].interp(
+        lat=template_ds.lat,
+        lon=template_ds.lon,
+        method='linear'
+    )
 
-    # Interpolate only the main data variable
-    regridded_da = wrap_ds[main_var_name].interp(lat=new_lat, lon=new_lon, method='linear')
-    
-    regridded_ds = regridded_da.to_dataset(name=main_var_name)
+    # build a new dataset with regridded variable
+    regridded_ds = xr.Dataset({var_name: regridded_da})
 
-    logger.debug("[Regridding] Example data generated.")
+    # copy over time + time_bnds from native data (if present)
+    if "time" in native_ds:
+        regridded_ds["time"] = native_ds["time"]
+        regridded_ds["time"].attrs = native_ds["time"].attrs.copy()
+    if "time_bnds" in native_ds:
+        regridded_ds["time_bnds"] = native_ds["time_bnds"]
+        regridded_ds["time_bnds"].attrs = native_ds["time_bnds"].attrs.copy()
+        if "bounds" not in regridded_ds["time"].attrs:
+            regridded_ds["time"].attrs["bounds"] = "time_bnds"
+
+    # copy height if exists
+    if "height" in native_ds:
+        regridded_ds["height"] = native_ds["height"]
+        regridded_ds["height"].attrs = native_ds["height"].attrs.copy()
+
+    # coordinate cleanup (lat/lon already interpolated)
+    regridded_ds["lat"].attrs = template_ds["lat"].attrs.copy()
+    regridded_ds["lon"].attrs = template_ds["lon"].attrs.copy()
+
     return regridded_ds
 
 def create_cmor_file(template_ds, regridded_ds, output_file, metadata_overrides):
@@ -83,9 +98,17 @@ def create_cmor_file(template_ds, regridded_ds, output_file, metadata_overrides)
     logger.debug("[Regridding] Copied global attributes.")
 
     logger.info("[Regridding] Copying Variable Attributes and Restoring Missing Value")
+    encoding_keys = ['calendar', '_FillValue']
     for var_name in cmor_ds.variables:
         if var_name in template_ds:
-            cmor_ds[var_name].attrs = template_ds[var_name].attrs.copy()
+            attrs = template_ds[var_name].attrs.copy()
+            # remove 'units' manually from 'time' to avoid xarray conflict
+            if var_name == "time" and "units" in attrs:
+                del attrs["units"]
+            for k in encoding_keys:
+                if k in attrs:
+                    del attrs[k]
+            cmor_ds[var_name].attrs = attrs
             logger.debug(f"[Regridding] Copied attributes for: {var_name}")
 
     # Restore missing_value attribute on main variable, which might not be in attrs
@@ -108,9 +131,10 @@ def create_cmor_file(template_ds, regridded_ds, output_file, metadata_overrides)
         original_height = template_ds['height']
         logger.debug(f"[Regridding] Original height dims: {original_height.dims}")
         scalar_height = original_height.isel({dim: 0 for dim in original_height.dims}, drop=True)
-        scalar_height.attrs = original_height.attrs
+        scalar_height.attrs = original_height.attrs.copy()
         cmor_ds['height'] = scalar_height
-        cmor_ds[main_var_name].attrs['coordinates'] = 'height'
+        if 'coordinates' not in cmor_ds[main_var_name].attrs:
+            cmor_ds[main_var_name].attrs['coordinates'] = 'height'
         logger.debug(f"[Regridding] Processed height as scalar with dims: {cmor_ds['height'].dims}")
 
     logger.info("[Regridding] Creating new lat/lon bounds")
@@ -118,6 +142,17 @@ def create_cmor_file(template_ds, regridded_ds, output_file, metadata_overrides)
     cmor_ds['lon_bnds'] = xr.DataArray(create_bounds(cmor_ds['lon'].values), dims=['lon', 'bnds'], name='lon_bnds')
     cmor_ds['lat'].attrs['bounds'] = 'lat_bnds'
     cmor_ds['lon'].attrs['bounds'] = 'lon_bnds'
+    # Add fallback attributes to lat/lon
+    cmor_ds['lat'].attrs.setdefault('units', 'degrees_north')
+    cmor_ds['lat'].attrs.setdefault('standard_name', 'latitude')
+    cmor_ds['lat'].attrs.setdefault('long_name', 'Latitude')
+    cmor_ds['lat'].attrs.setdefault('axis', 'Y')
+
+    cmor_ds['lon'].attrs.setdefault('units', 'degrees_east')
+    cmor_ds['lon'].attrs.setdefault('standard_name', 'longitude')
+    cmor_ds['lon'].attrs.setdefault('long_name', 'Longitude')
+    cmor_ds['lon'].attrs.setdefault('axis', 'X')
+
     logger.debug("[Regridding] Created 'lat_bnds' and 'lon_bnds'")
 
     logger.info("[Regridding] Applying Metadata Overrides")
@@ -149,9 +184,13 @@ def create_cmor_file(template_ds, regridded_ds, output_file, metadata_overrides)
             del var_encoding["_FillValue"]
             logger.debug(f"[Regridding] Removed _FillValue from encoding for: {var_name}")
 
-        if "chunksizes" in var_encoding and var_encoding["chunksizes"] is None:
-            del var_encoding["chunksizes"]
-            logger.debug(f"[Regridding] Removed invalid chunksizes from: {var_name}")
+        if "chunksizes" in var_encoding:
+            shape = cmor_ds[var_name].shape
+            chunks = var_encoding["chunksizes"]
+
+            if chunks is None or any(c > s for c, s in zip(chunks, shape)):
+                del var_encoding["chunksizes"]
+                logger.debug(f"[Regridding] Removed invalid chunksizes from {var_name}: {chunks} for shape {shape}")
 
         if "contiguous" in var_encoding:
             del var_encoding["contiguous"]
@@ -175,38 +214,12 @@ def create_cmor_file(template_ds, regridded_ds, output_file, metadata_overrides)
 
         encoding[var_name] = {k: v for k, v in var_encoding.items() if k in valid_keys}
 
+    # Ensure bnds variables have minimal encoding so they are preserved
+    for bnd_var in ['lat_bnds', 'lon_bnds', 'time_bnds']:
+        if bnd_var in cmor_ds and bnd_var not in encoding:
+            encoding[bnd_var] = {'dtype': 'double'}
+            logger.debug(f"[Regridding] Added fallback encoding for {bnd_var}")
+
     logger.info("[Regridding] Saving to NetCDF")
     cmor_ds.to_netcdf(output_file, encoding=encoding, unlimited_dims=['time'])
     logger.info(f"[Regridding] Successfully created {output_file}")
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Create a CMOR-compliant NetCDF file from a template.')
-    parser.add_argument('template_file', type=str, help='Path to the template NetCDF file.')
-    parser.add_argument(
-        '--override', '-o',
-        action='append',
-        dest='overrides',
-        default=[],
-        help='Metadata override in the form KEY=VALUE (changes tbd in config.yaml)'
-    )
-    args = parser.parse_args()
-
-    METADATA_OVERRIDES = {}
-    for item in args.overrides:
-        key, val = item.split("=", 1)
-        try:
-            val = ast.literal_eval(val)
-        except Exception:
-            pass
-        METADATA_OVERRIDES[key] = val
-
-    with xr.open_dataset(args.template_file, decode_times=False) as template_ds:
-        # 1. Generate some example data (in a real scenario, this would be provided)
-        regridded_data = generate_example_regridded_data(template_ds)
-
-        # 2. Define the output file path
-        output_filename = os.path.basename(args.template_file).replace('_gn_', '_gr_')
-        output_path = os.path.join(os.path.dirname(args.template_file), output_filename)
-
-        # 3. Create the CMOR file
-        create_cmor_file(template_ds, regridded_data, output_path, METADATA_OVERRIDES)

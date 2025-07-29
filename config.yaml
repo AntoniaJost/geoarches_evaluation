@@ -47,6 +47,9 @@ split_vars:
 
 regridding:
   base_dir: "${general.work_dir}/3_split"
+  template_dir: "/home/a/a270220/projects/cmorisation/data_read/MPI-M-local/MPI-ESM1-2-LR/aimip/r1i1p1f1"
+  template_version: "v20190815"
+  template_suffix: "MPI-ESM1-2-LR_amip_r1i1p1f1_gr"
   scales:
     - daily
     - monthly

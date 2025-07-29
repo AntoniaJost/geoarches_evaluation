@@ -1,9 +1,11 @@
 import os
 import subprocess
 from glob import glob
+import xarray as xr
 from steps.step_base import Step
 from logger import GREEN, RED, WARN
 from utils.change_tracker import get_force_rerun_flag
+from utils.regridding_to_1x1 import regrid_to_template_grid, create_cmor_file
 
 class RunRegriddingStep(Step):
     """
@@ -15,15 +17,27 @@ class RunRegriddingStep(Step):
     """
     def run(self):
         # load config
-        cfg      = self.cfg
-        base_dir = cfg['base_dir']
-        scales   = cfg.get('scales', [])
-        gn_sub   = cfg.get('gn_subdir', 'gn')
-        gr_sub   = cfg.get('gr_subdir', 'gr')
-        script   = cfg['script']
-        meta_over = cfg.get('metadata_overrides', {})
+        cfg          = self.cfg
+        base_dir     = cfg['base_dir']
+        scales       = cfg.get('scales', [])
+        gn_sub       = cfg.get('gn_subdir', 'gn')
+        gr_sub       = cfg.get('gr_subdir', 'gr')
+        template_dir = cfg['template_dir']
+        version      = cfg.get('template_version', 'v20190815')
+        suffix       = cfg.get('template_suffix', 'MPI-ESM1-2-LR_amip_r1i1p1f1_gr')
+        meta_over    = cfg.get('metadata_overrides', {})
+
+        freq_map = {
+            'monthly': 'Amon',
+            'daily': 'day'
+        }
 
         for scale in scales:
+            # get frequency: daily or monthly
+            freq_code = freq_map.get(scale)
+            if not freq_code:
+                self.logger.warning(f"{WARN} [RunRegriddingStep] Unknown frequency: {scale}")
+                continue
             scale_dir = os.path.join(base_dir, scale)
             if not os.path.isdir(scale_dir):
                 self.logger.warning(f"{RED} [RunRegriddingStep] Scale directory not found, skipping: {scale_dir}")
@@ -55,6 +69,16 @@ class RunRegriddingStep(Step):
                     if removed == 0:
                         self.logger.info(f"[RunRegriddingStep] No existing {scale} gr files to delete.")
 
+                # determine template path
+                template_pattern = os.path.join(
+                    template_dir, freq_code, var, 'gr', version, f"{var}_{freq_code}_{suffix}_*.nc"
+                )
+                matching_templates = glob(template_pattern)
+                if not matching_templates:
+                    self.logger.error(f"{RED} [RunRegriddingStep] No template found for {var} ({freq_code})")
+                    continue
+                template_file = matching_templates[0]                       
+
                 # process each input gn‑file
                 for gn_path in glob(os.path.join(gn_dir, "*_gn_*.nc")):
                     fname = os.path.basename(gn_path)
@@ -69,27 +93,18 @@ class RunRegriddingStep(Step):
                     elif os.path.exists(gr_path):
                         self.logger.warning(f"{RED} [RunRegriddingStep] Overwriting empty file: {gr_path}")
 
-                    self.logger.info(f"[RunRegriddingStep] Regridding {gn_path} → {gr_path}")
-                    
-                    # construct command to call external regridding script
-                    cmd = ["python", script, gn_path]
-
-                    # Append metadata_overrides from config
-                    for key, val in self.cfg.get("metadata_overrides", {}).items():
-                        cmd += ["--override", f"{key}={val}"]
-
+                    self.logger.info(f"[RunRegriddingStep] Regridding {gn_path} → {gr_path}, using template {template_file}")
                     try:
-                        # run that regridding subprocess
-                        subprocess.run(cmd, check=True)
-                    except subprocess.CalledProcessError as e:
-                        self.logger.error(f"{RED} [RunRegriddingStep] Regridding failed for {gn_path}: {e}")
+                        with xr.open_dataset(template_file, decode_times=False) as template_ds, \
+                             xr.open_dataset(gn_path) as native_ds:
+
+                            # regrid
+                            regridded_ds = regrid_to_template_grid(native_ds, template_ds)
+                            # write CMOR-compliant file
+                            create_cmor_file(template_ds, regridded_ds, gr_path, meta_over)
+                            self.logger.info(f"{GREEN} [RunRegriddingStep] Wrote: {gr_path}")
+
+                    except Exception as e:
+                        self.logger.error(f"{RED} [RunRegriddingStep] Failed on {gn_path}: {e}")
                         raise
 
-                    # move output file from gn folder to final gr folder to align with convention
-                    generated = os.path.join(gn_dir, gr_fname)
-                    if not os.path.exists(generated):
-                        self.logger.error(f"{RED} [RunRegriddingStep] Expected output not found: {generated}")
-                        raise FileNotFoundError(generated)
-
-                    os.replace(generated, gr_path)
-                    self.logger.info(f"{GREEN} [RunRegriddingStep] Moved to: {gr_path}")
