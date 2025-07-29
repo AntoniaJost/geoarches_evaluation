@@ -46,6 +46,7 @@ split_vars:
   monthly_prefix: "monthly_"
 
 regridding:
+  regrid: true
   base_dir: "${general.work_dir}/3_split"
   template_dir: "/home/a/a270220/projects/cmorisation/data_read/MPI-M-local/MPI-ESM1-2-LR/aimip/r1i1p1f1"
   template_version: "v20190815"

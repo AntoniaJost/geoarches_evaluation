@@ -1,23 +1,21 @@
 import os
-import subprocess
 from glob import glob
 import xarray as xr
 from steps.step_base import Step
 from logger import GREEN, RED, WARN
 from utils.change_tracker import get_force_rerun_flag
-from utils.regridding_to_1x1 import regrid_to_template_grid, create_cmor_file
+from utils.regridding_to_1x1 import regrid_to_template_grid
 
 class RunRegriddingStep(Step):
     """
-    Regrids all *_gn_*.nc files to *_gr_*.nc for each variable and scale:
-    - Traverses base_dir/<scale>/<var>/gn/*.nc
-    - Runs a user-specified external regridding script on each input file
+    - Regrids all *_gn_*.nc files to *_gr_*.nc for each variable and scale
     - Moves the regridded *_gr_*.nc result into a separate 'gr' subdirectory
     - Supports forced regridding via change-tracking flag
     """
     def run(self):
         # load config
         cfg          = self.cfg
+        regrid       = cfg.get('regrid', False)
         base_dir     = cfg['base_dir']
         scales       = cfg.get('scales', [])
         gn_sub       = cfg.get('gn_subdir', 'gn')
@@ -25,8 +23,12 @@ class RunRegriddingStep(Step):
         template_dir = cfg['template_dir']
         version      = cfg.get('template_version', 'v20190815')
         suffix       = cfg.get('template_suffix', 'MPI-ESM1-2-LR_amip_r1i1p1f1_gr')
-        meta_over    = cfg.get('metadata_overrides', {})
 
+        # check if regridding to 1x1° (resolution of template) is wanted, otherwise skip
+        if not regrid:
+            self.logger.warning(f"{WARN} [RunRegriddingStep] No regridding wanted. Skipping entire step.")
+            return
+        
         freq_map = {
             'monthly': 'Amon',
             'daily': 'day'
@@ -99,12 +101,8 @@ class RunRegriddingStep(Step):
                              xr.open_dataset(gn_path) as native_ds:
 
                             # regrid
-                            regridded_ds = regrid_to_template_grid(native_ds, template_ds)
-                            # write CMOR-compliant file
-                            create_cmor_file(template_ds, regridded_ds, gr_path, meta_over)
-                            self.logger.info(f"{GREEN} [RunRegriddingStep] Wrote: {gr_path}")
+                            regrid_to_template_grid(native_ds, template_ds, gr_path)
 
                     except Exception as e:
                         self.logger.error(f"{RED} [RunRegriddingStep] Failed on {gn_path}: {e}")
                         raise
-
