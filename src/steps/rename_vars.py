@@ -81,8 +81,6 @@ class RenameVarsStep(Step):
                     # rename variables based on mapping
                     ds = ds.rename({k: v for k, v in var_map.items() if k in ds.variables})
                     # retain only renamed variables
-                    # keep = [v for v in var_map.values() if v in ds]
-                    # ds = ds[keep]
                     keep = [v for v in var_map.values() if v in ds.data_vars]
                     aux_vars = [v for v in ds.data_vars if v.endswith('_bnds')]
                     ds = ds[keep + aux_vars]
@@ -103,15 +101,15 @@ class RenameVarsStep(Step):
                             ds['pr'] = ds['pr'] / conv
 
                     # if pressure levels are specified, retain only those levels
-                    if 'level' in ds.dims and levels:
-                        vars_with_level = [v for v in ds.data_vars if 'level' in ds[v].dims]
+                    if 'plev' in ds.dims and levels:
+                        vars_with_level = [v for v in ds.data_vars if 'plev' in ds[v].dims]
                         if vars_with_level:
-                            ds = ds.sel(level=[lev for lev in levels if lev in ds.level.values])
-                            self.logger.debug(f"[RenameVarsStep] Filtered {vars_with_level} to levels {ds.level.values}")
+                            ds = ds.sel(plev=[lev for lev in levels if lev in ds.plev.values])
+                            self.logger.debug(f"[RenameVarsStep] Filtered {vars_with_level} to levels {ds.plev.values}")
 
                     # zg special case, for geopotential height only keep 500 hPa
                     if 'zg' in ds and 'level' in ds['zg'].dims:
-                        ds['zg'] = ds['zg'].sel(level=500, drop=False)
+                        ds['zg'] = ds['zg'].sel(plev=500, drop=False)
 
                     # for daily data only keep restriced time range 
                     if base_name == 'daily' and time_slice and 'time' in ds:
