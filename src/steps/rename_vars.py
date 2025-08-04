@@ -124,6 +124,7 @@ class RenameVarsStep(Step):
                         # assign missing_value attribute to each variable
                         missing_val = np.float32(1e20)
                         ds[var].attrs['missing_value'] = missing_val
+                        ds[var].encoding.pop('missing_value', None)  # avoid conflict
                         ds[var].encoding['_FillValue'] = missing_val
 
                     processed.append(ds)
