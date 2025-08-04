@@ -51,7 +51,9 @@ class SplitVarsStep(Step):
             for var in ds.data_vars:
                 if var == "time_bnds":
                     continue
-                out_dir = os.path.join(out_base, freq, var, 'gn')
+                # Sanitize variable name to prevent issues like \2m_temperature
+                sanitized_var = var.replace("\\", "").replace(" ", "_")
+                out_dir = os.path.join(out_base, freq, sanitized_var, 'gn')
                 os.makedirs(out_dir, exist_ok=True)
 
                 # delete existing files for this var if force rerun is enabled
@@ -70,7 +72,7 @@ class SplitVarsStep(Step):
                         self.logger.info(f"[SplitVarsStep] No old {freq} files to delete in {out_dir}")
 
                 # build output file path for the variable
-                out_file = os.path.join(out_dir, f"{var}_gn_{t0}_{t1}.nc")
+                out_file = os.path.join(out_dir, f"{sanitized_var}_gn_{t0}_{t1}.nc")
 
                 # skip if exists and non-empty
                 if not force_rerun and os.path.exists(out_file) and os.path.getsize(out_file) > 0:
@@ -88,7 +90,7 @@ class SplitVarsStep(Step):
 
                 # Create dataset with both
                 var_ds = ds[vars_to_keep].copy()
-                var_ds.attrs['variable_id'] = var
+                var_ds.attrs['variable_id'] = sanitized_var
                 var_ds.to_netcdf(out_file)
                 self.logger.info(f"{GREEN} [SplitVarsStep] Saved {out_file}")
                 
