@@ -84,12 +84,6 @@ class CalcMeansStep(Step):
             'dtype': 'double'
         })
 
-        # prevent xarray from auto-injecting _FillValue=None into output
-        for var in ['time', 'time_bnds']:
-            ds[var].attrs.pop('_FillValue', None)
-            ds[var].encoding.pop('_FillValue', None)
-            ds[var].encoding['_FillValue'] = None
-
         # save as netcdf
         ds.to_netcdf(output_path)
 
