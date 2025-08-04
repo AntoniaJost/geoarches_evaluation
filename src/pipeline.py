@@ -16,7 +16,7 @@ from steps.calc_means import CalcMeansStep
 from steps.rename_vars import RenameVarsStep
 from steps.split_vars import SplitVarsStep
 from steps.run_regridding import RunRegriddingStep
-from steps.cmorise import CmoriseStep
+from steps.cmorise_v2 import CmoriseStep
 
 def main():
     # parse command line arguments
@@ -35,10 +35,10 @@ def main():
 
     # define processing steps (order is important!)
     steps = [
-        CalcMeansStep(cfg.get('calc_means'), logger),
+        # CalcMeansStep(cfg.get('calc_means'), logger),
         RenameVarsStep( cfg.get('rename_vars'), logger),
         SplitVarsStep(cfg.get('split_vars'), logger),
-        RunRegriddingStep(cfg.get('regridding'), logger),
+        # RunRegriddingStep(cfg.get('regridding'), logger),
         CmoriseStep(cfg.get('cmorise'), logger),
     ]
 
