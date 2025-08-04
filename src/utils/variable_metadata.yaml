@@ -1,0 +1,95 @@
+hus:
+  standard_name: "specific_humidity"
+  long_name: "Specific Humidity"
+  comment: "Specific humidity is the mass fraction of water vapor in (moist) air."
+  units: "1"
+  cell_methods: "time: mean"
+  cell_measures: "area: areacella"
+
+huss:
+  standard_name: "specific_humidity"
+  long_name: "Near-Surface Specific Humidity"
+  comment: "Near-surface (usually, 2 meter) specific humidity."
+  units: "1"
+  cell_methods: "area: time: mean"
+  cell_measures: "area: areacella"
+
+pr:
+  standard_name: "precipitation_flux"
+  long_name: "Precipitation"
+  comment: "includes both liquid and solid phases"
+  units: "kg m-2 s-1"
+  cell_methods: "area: time: mean"
+  cell_measures: "area: areacella"
+
+ps:
+  standard_name: "surface_air_pressure"
+  long_name: "Surface Air Pressure"
+  comment: "surface pressure (not mean sea-level pressure), 2-D field to calculate the 3-D pressure field from hybrid coordinates"
+  units: "Pa"
+  cell_methods: "area: time: mean"
+  cell_measures: "area: areacella"
+
+ta:
+  standard_name: "air_temperature"
+  long_name: "Air Temperature"
+  comment: "Air Temperature"
+  units: "K"
+  cell_methods: "time: mean"
+  cell_measures: "area: areacella"
+
+tas:
+  standard_name: "air_temperature"
+  long_name: "Near-Surface Air Temperature"
+  comment: "near-surface (usually, 2 meter) air temperature"
+  units: "K"
+  cell_methods: "area: time: mean"
+  cell_measures: "area: areacella"
+
+ts:
+  standard_name: "surface_temperature"
+  long_name: "Surface Temperature"
+  comment: "Temperature of the lower boundary of the atmosphere"
+  units: "K"
+  cell_methods: "area: time: mean"
+  cell_measures: "area: areacella"
+
+ua:
+  standard_name: "eastward_wind"
+  long_name: "Eastward Wind"
+  comment: "Zonal wind (positive in a eastward direction)."
+  units: "m s-1"
+  cell_methods: "time: mean"
+  cell_measures: "area: areacella"
+
+uas:
+  standard_name: "eastward_wind"
+  long_name: "Eastward Near-Surface Wind"
+  comment: "Eastward component of the near-surface (usually, 10 meters)  wind"
+  units: "m s-1"
+  cell_methods: "area: time: mean"
+  cell_measures: "area: areacella"
+
+va:
+  standard_name: "northward_wind"
+  long_name: "Northward Wind"
+  comment: "Meridional wind (positive in a northward direction)."
+  units: "m s-1"
+  cell_methods: "time: mean"
+  cell_measures: "area: areacella"
+
+vas:
+  standard_name: "northward_wind"
+  long_name: "Northward Near-Surface Wind"
+  comment: "Northward component of the near surface wind"
+  units: "m s-1"
+  cell_methods: "area: time: mean"
+  cell_measures: "area: areacella"
+
+zg:
+  standard_name: "geopotential_height"
+  long_name: "Geopotential Height"
+  comment: "Geopotential is the sum of the specific gravitational potential energy relative to the geoid and the specific centripetal potential energy. Geopotential height is the geopotential divided by the standard acceleration due to gravity. It is numerically similar to the altitude (or geometric height) and not to the quantity with standard name height, which is relative to the surface."
+  units: "m"
+  cell_methods: "time: mean"
+  cell_measures: "area: areacella"
