@@ -8,6 +8,9 @@ from logger import WARN
 logger = logging.getLogger("cmor")
 
 def add_lat_lon_bounds(ds):
+    """
+    adds CMOR-compliant lat/lon bounds to a dataset if missing
+    """
     if 'lat_bnds' not in ds and 'lat' in ds:
         lat = ds['lat'].values
         lat_bnds = _infer_bounds(lat)
@@ -33,18 +36,24 @@ def add_lat_lon_bounds(ds):
     return ds
 
 def add_time_bounds(ds):
-    time = ds['time'].values
+    """
+    adds time bounds if missing
+    """
+    time = ds['time'].values    
+    ds['time'].attrs.update({"longname": "time"})
     if 'time_bnds' not in ds and len(time) > 1:
         dt = (time[1] - time[0]) / 2
         bounds = np.stack([time - dt, time + dt], axis=1)
         ds['time_bnds'] = (('time', 'bnds'), bounds)
         ds['time'].attrs.update({
-            "bounds": "time_bnds",
-            "long_name": "time"
+            "bounds": "time_bnds"
         })
     return ds
 
 def fix_plev(ds):
+    """
+    updates pressure level metadata to cmor standard
+    """
     if 'plev' in ds.coords:
         ds['plev'].attrs.update({
             "units": "Pa", # ?? or hPa?
@@ -55,6 +64,10 @@ def fix_plev(ds):
     return ds
 
 def fix_variable_metadata(ds, var_name, metadata_dict):
+    """
+    injects metadata attributes into variable
+    uses values from provided metadata dictionary
+    """
     if var_name not in ds.data_vars:
         return ds  
 
@@ -79,6 +92,10 @@ def fix_variable_metadata(ds, var_name, metadata_dict):
 
 
 def inject_height_if_needed(ds, var):
+    """
+    injects a "height" coordinate (2m or 10m) if required
+    only applies to tas, uas and vas
+    """
     if var in ['tas', 'uas', 'vas'] and 'height' not in ds.coords:
         height_value = 2.0 if var == 'tas' else 10.0
         ds.coords['height'] = height_value
@@ -92,6 +109,10 @@ def inject_height_if_needed(ds, var):
     return ds
 
 def _infer_bounds(values):
+    """
+    ingers bounds (for lat/lon) by computing midpoints
+    assumes regularly spaced coordinates
+    """
     step = np.diff(values)
     lower = values - step[0]/2
     upper = values + step[0]/2

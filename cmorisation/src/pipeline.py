@@ -2,7 +2,7 @@
 # 
 # Steps:
 # 1. Load config and set up logger
-# 2. Run: CalcMeans → RenameVars → SplitVars → Regridding → Cmorise
+# 2. Run: RenameVars → SplitVars → Cmorise
 # 3. Optionally delete intermediate outputs
 
 import sys, argparse
@@ -12,11 +12,9 @@ import os
 from logger import setup_logger, success, error, WARN, GREEN
 
 # import processing steps
-from steps.calc_means import CalcMeansStep
 from steps.rename_vars import RenameVarsStep
 from steps.split_vars import SplitVarsStep
-from steps.run_regridding import RunRegriddingStep
-from steps.cmorise_v2 import CmoriseStep
+from steps.cmorise import CmoriseStep
 
 def main():
     # parse command line arguments
@@ -35,10 +33,8 @@ def main():
 
     # define processing steps (order is important!)
     steps = [
-        # CalcMeansStep(cfg.get('calc_means'), logger),
         RenameVarsStep( cfg.get('rename_vars'), logger),
         SplitVarsStep(cfg.get('split_vars'), logger),
-        # RunRegriddingStep(cfg.get('regridding'), logger),
         CmoriseStep(cfg.get('cmorise'), logger),
     ]
 

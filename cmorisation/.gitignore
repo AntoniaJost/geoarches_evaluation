@@ -29,7 +29,6 @@ data/1_means/
 data/2_renamed/
 data/3_split/
 data/4_cmorisation/
-cmorise_*/ 
 *.nc  
 
 # SLURM output (if not redirected to logs/)
