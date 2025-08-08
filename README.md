@@ -4,7 +4,12 @@ This repository consists of two parts: Evaluation and Cmorisation.
 
 ## Evaluation
 
-tbd by Robert
+Evaluating the arches models consists of two steps.
+1. Rollout ArchesWeather or ArchesWeatherGen for a predefined time span to obtain climate projections. The rollout module will produce outputs that are named following the AIMIP standard. 
+2. Evaluate the rollout done in 1 by loading the corresponding files and computing predefined metrics.
+
+The rollout is currently started by running rollout.py. This is subject to change. The evaluation is done by running climeval.py The required information are specified in yaml files and hydra is used to 
+The code is subject to refactoring. See the issues for further information.
 
 ## AIMIP CMORisation Pipeline
 
