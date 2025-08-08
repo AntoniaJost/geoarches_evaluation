@@ -36,3 +36,6 @@ slurm-*.out
 
 # Auto-generated files
 means_changed.json
+
+# notebooks
+*.ipynb
