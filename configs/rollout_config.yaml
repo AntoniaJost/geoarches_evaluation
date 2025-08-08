@@ -1,0 +1,20 @@
+model_name: "archesweather-m-seed0-sst-weight_005-ftar"
+start_timestamp: "1980-01-01T12:00"
+end_timestamp: "2020-01-01T12:00"
+infrastructure: 
+  model_name: "archesweather-m-seed0-sst-weight005"
+  dataset: ""
+aimip:
+  name: "AWM-sst-w005-custom"
+  member: 0
+  grid_type: "gn" # Options: "gn", "ga", "gr"
+  init_method: 1 # Options: 1, 2, 3, ...
+  physics: 1 # Options: 1, 2, ...
+  forcings: 1 # Options: 1, 2, ...
+  sst_scenario: ''
+storage:
+  type: "daily" # Options: "monthly", "daily"
+  path: evalstore/${model_name}/${start_timestamp}_${end_timestamp}/${storage.type}
+  store_initial_condition: True
+
+  

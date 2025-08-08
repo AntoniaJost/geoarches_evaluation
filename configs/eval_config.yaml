@@ -1,0 +1,62 @@
+model_name: "archesweather-m-seed0-gc-sst_sic-weight_05_01-ft_autoregressive"
+type: "daily"
+period: "2007-01-01T12:00_2060-01-01T12:00"
+evaluator: 
+  path: "evalstore/${model_name}/${period}/${type}"
+  era5_path: "data/era5_240/full"
+  era5_clim_path: Null
+  base_period: [1995, 2014]
+  variables: 
+    surface: []
+      #- "sea_surface_temperature"
+      #- "2m_temperature"
+      #- "mean_sea_level_pressure"
+      #- "sea_ice_cover"
+    level:
+      #- "geopotential"
+      #- "u_component_of_wind"
+      #- "temperature" 
+      - vertical_velocity
+  levels: [250, 500, 850]
+  output_path: "evalstore/${model_name}/${period}/${type}/climeval"
+
+evaluate:
+  anomaly_over_years:
+    variable:  "sea_surface_temperature"
+    level: Null
+    plot: True
+  correlation:
+    variable1: 
+      name: "sea_surface_temperature"
+      level: Null
+    variable2: 
+      name: "geopotential"
+      level: 500
+    plot: True
+    era5_base: True
+    colormap: "coolwarm"
+  #covariance:
+  #  variable1: 
+  #    name: "sea_surface_temperature"
+  #    level: Null
+  #  variable2: 
+  #    name: "geopotential"
+  #    level: 500
+  #  plot: True
+  #  era5_base: True
+  annual_cycle:
+    plot: True
+    plot_against_era5: True
+  southern_oscillation_index:
+    plot: True
+  anomalies:
+    type: "monthly"
+    year: 2015
+    plot: True 
+
+
+    
+
+
+
+  
