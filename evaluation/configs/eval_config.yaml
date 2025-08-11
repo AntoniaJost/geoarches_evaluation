@@ -18,23 +18,23 @@ evaluator:
       #- "temperature" 
       - vertical_velocity
   levels: [250, 500, 850]
-  output_path: "evalstore/${model_name}/${period}/${type}/climeval"
+  output_path: "evalstore/climeval/${model_name}/${period}/${type}"
 
 evaluate:
-  anomaly_over_years:
-    variable:  "sea_surface_temperature"
-    level: Null
-    plot: True
-  correlation:
-    variable1: 
-      name: "sea_surface_temperature"
-      level: Null
-    variable2: 
-      name: "geopotential"
-      level: 500
-    plot: True
-    era5_base: True
-    colormap: "coolwarm"
+  # anomaly_over_years:
+  #   variable:  "sea_surface_temperature"
+  #   level: Null
+  #   plot: True
+  # correlation:
+  #   variable1: 
+  #     name: "sea_surface_temperature"
+  #     level: Null
+  #   variable2: 
+  #     name: "geopotential"
+  #     level: 500
+  #   plot: True
+  #   era5_base: True
+  #   colormap: "coolwarm"
   #covariance:
   #  variable1: 
   #    name: "sea_surface_temperature"
@@ -44,15 +44,23 @@ evaluate:
   #    level: 500
   #  plot: True
   #  era5_base: True
-  annual_cycle:
-    plot: True
-    plot_against_era5: True
-  southern_oscillation_index:
-    plot: True
-  anomalies:
-    type: "monthly"
-    year: 2015
-    plot: True 
+  # annual_cycle:
+  #   plot: True
+  #   plot_against_era5: True
+  # southern_oscillation_index:
+  #   plot: True
+  # anomalies:
+  #   type: "monthly"
+  #   year: 2015
+  #   plot: True 
+  variability_kde_timeseries:
+    variable: "temperature"   # not working for t2m, as it does not have 'level' dimension
+    level: 850                # use: null for surface vars
+    label_model: "ArchesWeather"
+    plot_era5: True
+    bandwidth: "scott"        # or a float, e.g., 0.2, or "silverman"/"scott"
+    detrend: True
+    output_fname: "kde_timeseries_t850_detrend"
 
 
     
