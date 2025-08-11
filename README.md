@@ -17,6 +17,7 @@ You need to symlink a couple of folders just as you do for [geoarches](https://g
 
 * a ```data/era5_240/full``` folder with 6 hourly era5 input netcdf files (contact Robert for the full path of the data on Levante).
 * an ```evalstore``` folder containing the model input as netcdf files (again, contact Robert for full path if required). Structure has to be ```evalstore/{model_name}/{period}/{type}```, e.g. ```.../evalstore/archesweather-m-seed0-gc-sst_sic-weight_01/2000-01-01T12:00_2040-12-31T12:00/daily/...nc```
+* a ```wandblogs``` folder
 
 ## AIMIP CMORisation Pipeline
 
