@@ -26,10 +26,8 @@ def _global_monthly_anomalies(ds: xr.Dataset, var: str, level, base_period):
 # fitting a linear regression to the time series and subtracting it from the fit
 def _detrend_series(anom):
     """
-    Entfernt einen linearen Trend aus einer 1D-Zeitreihe (xarray.DataArray).
-    Gibt die detrendete Serie zurück.
+    Removes linear trend from 1D time series
     """
-    # Zeit in numerisches Format (z. B. Jahre)
     years = anom['time'].dt.year + (anom['time'].dt.dayofyear - 1) / 365.25
     slope, intercept, *_ = linregress(years, anom.values)
     detrended = anom - (slope * years + intercept)
@@ -64,7 +62,7 @@ def variability_kde_timeseries(
     # anomalies for ERA5
     era5_anom = _global_monthly_anomalies(era5, variable, level, base_period) if include_era5 else None
 
-    # optional detrenden
+    # optionally detrend
     if detrend:
         model_anom = _detrend_series(model_anom)
         if era5_anom is not None:
@@ -113,6 +111,17 @@ def variability_kde_timeseries(
     ax_ts.grid(True, alpha=0.3)
     ax_ts.legend(loc="upper right", frameon=False)
 
-    fig.tight_layout()
+    # title
+    title_parts = [
+        f"{label_model} vs ERA5" if include_era5 else label_model,
+        f"{lab_var}",
+        f"Base period: {base_period[0]}–{base_period[1]}",
+        "Detrended" if detrend else "Raw anomalies",
+        f"Kernel: Gaussian",
+        f"Bandwidth: {bandwidth}",
+    ]
+    fig.suptitle(" | ".join(title_parts), fontsize=11)
+
+    fig.tight_layout(rect=[0, 0.03, 1, 0.95])
     fig.savefig(os.path.join(outdir, f"{output_fname}.png"))
     plt.close(fig)

@@ -1,0 +1,1 @@
+ℹ️ To run, for example, ```python3 climeval.py```, you have to make sure that you have a [geoarches environment](https://geoarches.readthedocs.io/en/latest/getting_started/installation/) activated.
