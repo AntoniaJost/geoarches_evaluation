@@ -21,6 +21,7 @@ from omegaconf import OmegaConf
 
 from geoarches.dataloaders.era5 import surface_variables_short, level_variables_short
 from metrics.southern_oscillation_index import calculate_southern_oscillation_index
+from metrics.kernel_density_estimation import variability_kde_timeseries as kde_variability_plot
 
 #climate_stats_path = importlib.resources.files(climate_stats)
 
@@ -667,6 +668,30 @@ class ClimateEvaluator:
             plt.savefig(f"{output_path}/{variable}_anomalies.png")
 
         return anomalies
+    
+    def variability_kde_timeseries(
+        self,
+        variable="temperature",
+        level=850,                 # use None/null for surface variables
+        label_model="ArchesWeather",
+        plot_era5=True,
+        bandwidth="scott",
+        output_fname="variability_kde_timeseries",
+        detrend=False,
+    ):
+        kde_variability_plot(
+            data=self.data,
+            era5=self.era5 if plot_era5 else None,
+            variable=variable,
+            level=level,
+            base_period=self.base_period,
+            output_path=self.output_path,
+            label_model=label_model,
+            include_era5=plot_era5,
+            bandwidth=bandwidth,
+            output_fname=output_fname,
+            detrend=detrend,
+        )
 
     def evaluate(self):
         """

@@ -1,0 +1,39 @@
+# Softlinks and output directories ...
+outputs
+logs
+modelstore
+evalstore
+data
+wandblogs
+
+# Ignore Python bytecode files
+*.pyc   
+__pycache__/
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+# Ignore virtual environment directories
+venv/
+.env
+
+
+# Ignore model files
+*.pth
+*.pt
+*.ckpt
+*.onnx
+
+# Images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.webp
+
+# Notebooks
+*.ipynb
+
+evaluation/symlink.sh
+evaluation/metrics/__pycache__/*
+evaluation/metrics/__init__.py
