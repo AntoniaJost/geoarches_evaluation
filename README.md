@@ -11,6 +11,13 @@ Evaluating the arches models consists of two steps.
 The rollout is currently started by running rollout.py. This is subject to change. The evaluation is done by running climeval.py The required information are specified in yaml files and hydra is used to 
 The code is subject to refactoring. See the issues for further information.
 
+### Prerequisites
+
+You need to symlink a couple of folders just as you do for [geoarches](https://geoarches.readthedocs.io/en/latest/getting_started/installation/#downloading-archesweather-and-archesweathergen), and provide ERA5 as input data. The following connections are needed for sure:
+
+* a ```data/era5_240/full``` folder with 6 hourly era5 input netcdf files (contact Robert for the full path of the data on Levante).
+* an ```evalstore``` folder containing the model input as netcdf files (again, contact Robert for full path if required). Structure has to be ```evalstore/{model_name}/{period}/{type}```, e.g. ```.../evalstore/archesweather-m-seed0-gc-sst_sic-weight_01/2000-01-01T12:00_2040-12-31T12:00/daily/...nc```
+
 ## AIMIP CMORisation Pipeline
 
 This folder of the repository provides a modular pipeline for preparing and CMORising reanalysis or model output data to meet AIMIP (AI Model Intercomparison Project) specifications. The pipeline performs multiple preprocessing steps and produces CMOR-compliant NetCDF files ready for submission.
