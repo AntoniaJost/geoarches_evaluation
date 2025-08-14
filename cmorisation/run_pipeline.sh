@@ -16,7 +16,7 @@ mkdir -p data/2_renamed data/3_split data/4_cmorisation
 TAG="AWM-sst-w005-custom_aimip_r0i1p1f1_gn"
 INPUT_DIR="/work/bk1450/b383170/eval/archesweather-m-seed0-sst-weight_005-ftar/1980-01-01T12:00_2020-01-01T12:00/daily"
 BASE_OUT="/work/bk1450/a270220/repos"
-TIMESPAN="2000-2035" # timespan of your input files
+TIMESPAN="1980-2020" # timespan of your input files
 
 # DO NOT CHANGE THESE! 
 MERGED_FILE="${BASE_OUT}/geoarches_evaluation/cmorisation/data/1_means/daily_means/daily_${TAG}_${TIMESPAN}.nc"

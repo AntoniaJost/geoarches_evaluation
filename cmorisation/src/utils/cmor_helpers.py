@@ -52,11 +52,26 @@ def add_time_bounds(ds):
 
 def fix_plev(ds):
     """
+    convert from hPa/mbar to Pa if needed
     updates pressure level metadata to cmor standard
     """
     if 'plev' in ds.coords:
+        pressure = ds.coords['plev']
+        # units = pressure.attrs.get("units").lower()
+        units = (pressure.attrs.get("units", "") or "").lower()
+        # decide if conversion is needed:
+        # either units explicitly say hPa/mbar, 
+        # or magnitudes look like hPa (typical max < 2000)
+        needs_convert = (
+            units in {"hpa", "hectopascal", "millibar", "mbar"} or 
+            (pressure.size > 0 and
+            (float(pressure.max()) if pressure.dtype.kind in "fi" else float(pressure.astype("float64").max())) < 2000.0)
+        )
+        if needs_convert:
+            ds['plev'] = pressure.astype("float64") * 100
+        # update attributes    
         ds['plev'].attrs.update({
-            "units": "Pa", # ?? or hPa?
+            "units": "Pa", 
             "positive": "down",
             "long_name": "pressure",
             "standard_name": "air_pressure"
