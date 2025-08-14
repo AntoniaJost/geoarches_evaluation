@@ -45,7 +45,7 @@ cmorise:
     - monthly
   gn_subdir: "gn"
   gr_subdir: "gr"
-  model: 'AMM'
+  model: 'ArchesWeather-M'
   ensemble: 'r1i1p1f1'    
   output_root: "${general.work_dir}/4_cmorisation"
   global_attributes:
