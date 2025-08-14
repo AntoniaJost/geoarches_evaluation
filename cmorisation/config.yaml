@@ -39,7 +39,6 @@ split_vars:
 cmorise:
   base_dir: "${general.work_dir}/3_split"
   metadata_path: "${general.work_dir}/../src/utils/variable_metadata.yaml"
-  cmor_template_base_dir: "/home/a/a270220/projects/cmorisation/data_read/MPI-M-local/MPI-ESM1-2-LR/aimip/r1i1p1f1" # path to templates
   scales:
     - daily
     - monthly
