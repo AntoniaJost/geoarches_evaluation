@@ -117,7 +117,7 @@ class CmoriseStep(Step):
                     # build aimip conform filename and output path
                     subdir   = grid
                     filename = f"{var}_{cfreq}_{model}_aimip_{ensemble}_{subdir}_{start}-{end}.nc"
-                    out_dir  = os.path.join(out_base, scale, var, grid)
+                    out_dir  = os.path.join(out_base, cfreq, var, grid)
                     os.makedirs(out_dir, exist_ok=True)
                     out_path = os.path.join(out_dir, filename)
 
