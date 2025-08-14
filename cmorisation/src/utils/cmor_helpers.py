@@ -57,7 +57,8 @@ def fix_plev(ds):
     """
     if 'plev' in ds.coords:
         pressure = ds.coords['plev']
-        units = pressure.attrs.get("units").lower()
+        # units = pressure.attrs.get("units").lower()
+        units = (pressure.attrs.get("units", "") or "").lower()
         # decide if conversion is needed:
         # either units explicitly say hPa/mbar, 
         # or magnitudes look like hPa (typical max < 2000)
@@ -67,7 +68,7 @@ def fix_plev(ds):
             (float(pressure.max()) if pressure.dtype.kind in "fi" else float(pressure.astype("float64").max())) < 2000.0)
         )
         if needs_convert:
-            pressure = pressure.astype("float64")*100
+            ds['plev'] = pressure.astype("float64") * 100
         # update attributes    
         ds['plev'].attrs.update({
             "units": "Pa", 
