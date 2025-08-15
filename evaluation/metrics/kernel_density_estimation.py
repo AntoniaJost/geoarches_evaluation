@@ -18,6 +18,14 @@ def _global_monthly_anomalies(ds: xr.Dataset, var: str, level, base_period):
     xm = x.resample(time="MS").mean()
     # baseline climatology over base_period (per month)
     base = xm.sel(time=slice(f"{base_period[0]}-01-01", f"{base_period[1]}-12-31"))
+    # check if base period is empty
+    if base.sizes.get("time", 0) == 0:
+        print(
+            f"Base period {base_period[0]}–{base_period[1]} "
+            f"not found in dataset (time range {xm.time.min().values} to {xm.time.max().values}). "
+            "Skipping anomaly calculation and returning empty array."
+        )
+        return xr.full_like(xm, np.nan)
     clim = base.groupby("time.month").mean("time", skipna=True)
     # anomaly relative to that month’s climatology
     anom = xm.groupby("time.month") - clim
@@ -62,11 +70,33 @@ def variability_kde_timeseries(
     # anomalies for ERA5
     era5_anom = _global_monthly_anomalies(era5, variable, level, base_period) if include_era5 else None
 
+    # remove all-NaN case early
+    if model_anom.isnull().all():
+        print(f"No valid anomalies for {label_model}, skipping plot.")
+        return
+    if include_era5 and era5_anom is not None and era5_anom.isnull().all():
+        print("No valid anomalies for ERA5, skipping plot.")
+        return
+    
     # optionally detrend
     if detrend:
         model_anom = _detrend_series(model_anom)
         if era5_anom is not None:
             era5_anom = _detrend_series(era5_anom)
+
+    # remove NaNs for KDE
+    model_vals = model_anom.dropna("time").values
+    if model_vals.size == 0:
+        print("Model anomalies empty after NaN removal, skipping plot.")
+        return
+
+    if era5_anom is not None:
+        era5_vals = era5_anom.dropna("time").values
+        if era5_vals.size == 0:
+            print("ERA5 anomalies empty after NaN removal, skipping plot.")
+            return
+    else:
+        era5_vals = None
 
     # y-grid for KDE
     vals = [model_anom.values]
