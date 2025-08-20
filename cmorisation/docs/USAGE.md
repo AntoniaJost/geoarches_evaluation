@@ -16,25 +16,29 @@ pip install -r requirements.txt
 
 #### 2a. Edit `config.yaml`:
 
-* Define the path where your data will be stored (```work_dir```; should ideally be ```.../geoarches_evaluation/cmorisation/data```).
-* Similarly, adjust ```means_changed_path``` to ```.../geoarches_evaluation/cmorisation/data/1_means/means_changed.json```.
-* You can also specify variable/unit mappings and pressure levels, but I'd recommend to leave them as they are.
+* Add the path where your cloned respository lies (`repo_dir`).
+* Define the path where your data will be stored (```log_dir```). 
+* Adjust all params in the `cmorise.global_attributes` part according to your likings.
+* You can also specify variable/unit mappings and pressure levels, but if you want to be CF-compliant, I'd recommend to leave them as they are.
+* ℹ️ The param `unit_mapping.time_slice_daily` limits your daily runs. It will not process (daily) data beyond the end date that you put here.
 
 The 2 minimum things you have to adjust here are:
 
 ```yaml
 general:
-  work_dir: "path_to/repository/data"
-  means_changed_path: "same_path_to/repository/data/1_means/means_changed.json"
+  repo_dir: "path/to/repository/"
+  log_dir: "where/you/want/your/results/to/be"
 ```
 
 #### 2b. Edit `run_pipeline.sh`:
 
 * Set the right path to your environment.
+* Adjust the sbatch configs as you need.
 * Adjust
+  * ```MODEL_TAG```
+  * ```ENSEBLME```
   * ```TAG```
   * ```INPUT_DIR```
-  * ```BASE_OUT```
   * ```TIMESPAN```
 
 

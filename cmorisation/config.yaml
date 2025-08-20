@@ -1,8 +1,9 @@
 general:
-  work_dir: "/work/bk1450/a270220/repos/geoarches_evaluation/cmorisation/data"
-  log_dir: "logs"
+  work_dir: "${RUN_DIR}" 
+  repo_dir: "/work/bk1450/a270220/repos/geoarches_evaluation/cmorisation"
+  log_dir: "/work/bk1450/a270220/cmorised_awm/${MODEL_TAG}/logs"
   log_level: "DEBUG"
-  means_changed_path: "/work/bk1450/a270220/repos/geoarches_evaluation/cmorisation/data/1_means/means_changed.json"
+  means_changed_path: "${RUN_DIR}/1_means/means_changed.json" 
   delete_intermediate_outputs: false # if true, everything besides final cmorised output gets deleted in the end
 
 rename_vars:
@@ -38,14 +39,14 @@ split_vars:
 
 cmorise:
   base_dir: "${general.work_dir}/3_split"
-  metadata_path: "${general.work_dir}/../src/utils/variable_metadata.yaml"
+  metadata_path: "${general.repo_dir}/src/utils/variable_metadata.yaml"
   scales:
     - daily
     - monthly
   gn_subdir: "gn"
   gr_subdir: "gr"
   model: 'ArchesWeather-M'
-  ensemble: 'r1i1p1f1'    
+  ensemble: "${ENSEMBLE}"    
   output_root: "${general.work_dir}/4_cmorisation"
   global_attributes:
     Conventions: "CF-1.7 CMIP-6.2"

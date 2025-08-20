@@ -42,7 +42,7 @@ See [`USAGE.md`](cmorisation/docs/USAGE.md) for a short step-by-step quickstart 
 
 ### Configuration
 
-The pipeline is fully controlled via a `config.yaml` file. It defines:
+The pipeline is fully controlled via a `config.yaml` and a `run_pipeline.sh` file. It defines:
 
 - Input and output directories  
 - Which years to process
