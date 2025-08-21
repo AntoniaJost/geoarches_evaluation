@@ -86,6 +86,6 @@ cmorise:
     table_id: "" 
     table_info: "" 
     title: "ArchesWeatherGen prepared for AIMIP" 
-    variant_label: "r1i1p1f1" 
+    variant_label: "${ENSEMBLE}" 
     license: "" 
     cmor_version: "3.5.0"

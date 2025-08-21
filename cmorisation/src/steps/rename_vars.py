@@ -107,8 +107,9 @@ class RenameVarsStep(Step):
                             self.logger.debug(f"[RenameVarsStep] Filtered {vars_with_level} to levels {ds.plev.values}")
 
                     # zg special case, for geopotential height only keep 500 hPa
-                    if 'zg' in ds and 'level' in ds['zg'].dims:
+                    if 'zg' in ds and 'plev' in ds['zg'].dims:
                         ds['zg'] = ds['zg'].sel(plev=500, drop=False)
+                        self.logger.debug(f"[RenameVarsStep] Reduced geopotential height (zg) to 500hPa")
 
                     # for daily data only keep restriced time range 
                     if base_name == 'daily' and time_slice and 'time' in ds:
@@ -127,11 +128,9 @@ class RenameVarsStep(Step):
                         ds[var].encoding['_FillValue'] = missing_val
 
                     processed.append(ds)
-
                 except Exception as e:
                     self.logger.error(f"{RED} [RenameVarsStep] Error processing {fp}: {e}")
                     raise
-
             # merge datasets across time and save results
             if processed:
                 combined = xr.concat(processed, dim='time')
