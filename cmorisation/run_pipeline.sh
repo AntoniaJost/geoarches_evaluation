@@ -1,19 +1,24 @@
 #!/bin/bash
-#SBATCH --job-name=cmor_sst05_s0
+#SBATCH --job-name=cmor_m0v3s
 #SBATCH --time=04:00:00
 #SBATCH --partition=compute
 #SBATCH --account=bk1450
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=96G
+#SBATCH --output=slurm_%x_%j.out
+#SBATCH --error=slurm_%x_%j.err
 
 source /work/bk1450/a270220/aimip/bin/activate
 
 set -euo pipefail
 
 # ADJUST THESE 5 VARS ACCORDING TO YOUR DATA & STRUCTURE
-MODEL_TAG="archesweather-m-seed0-gc-sst_sic-weight_05_01-ft_autoregressive"
+MODEL_TAG="archesgen-m-gc-sst_sic-weight_01_member00_v2"
 ENSEMBLE="r0i1p1f1"
-TAG="AWM-sst_sic-w05_01-custom_aimip_${ENSEMBLE}_gn"
-INPUT_DIR="/work/bk1450/b383170/eval/archesweather-m-seed0-gc-sst_sic-weight_05_01-ft_autoregressive/1980-01-01T12:00_2060-01-01T12:00/daily"
-TIMESPAN="1980-2059" # timespan of your input files
+TAG="archesgen-sst_sic_aimip_${ENSEMBLE}_gn"
+INPUT_DIR="/work/bk1450/b383170/eval/archesgen-m-gc-sst_sic-weight_01/1980-01-01T12:00_2100-01-01T12:00/daily/member_00"
+TIMESPAN="1980-2066" # timespan of your input files
 
 export RUN_DIR="/work/bk1450/a270220/cmorised_awm/${MODEL_TAG}"
 mkdir -p "${RUN_DIR}/logs" \
