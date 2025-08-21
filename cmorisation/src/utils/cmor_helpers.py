@@ -73,6 +73,7 @@ def fix_plev(ds):
         ds['plev'].attrs.update({
             "units": "Pa", 
             "positive": "down",
+            "axis": "Z",
             "long_name": "pressure",
             "standard_name": "air_pressure"
         })
