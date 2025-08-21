@@ -34,7 +34,7 @@ def _post_ncatted(path, var):
             "-a", "_FillValue,lat_bnds,d,,",
             "-a", "_FillValue,lon_bnds,d,,",
         ]
-    elif var in ("ts", "psl"):
+    elif var in ("ts", "psl", "zg"):
         # no plev
         args = [
             "-a", "_FillValue,time_bnds,d,,",
@@ -46,7 +46,7 @@ def _post_ncatted(path, var):
             "-a", "_FillValue,lon_bnds,d,,",
         ]
     else:
-        # zg, ua, va, ta, hus  → include plev
+        # ua, va, ta, hus  → include plev
         args = [
             "-a", "_FillValue,time_bnds,d,,",
             "-a", "missing_value,time_bnds,d,,",
