@@ -39,11 +39,11 @@ def add_time_bounds(ds):
     """
     adds time bounds if missing
     """
-    time = ds['time'].values.astype('float64')    
+    time = ds['time'].values
     ds['time'].attrs.update({"long_name": "time"})
     if 'time_bnds' not in ds and len(time) > 1:
         dt = (time[1] - time[0]) / 2
-        bounds = np.stack([time - dt, time + dt], axis=1).astype('float64')
+        bounds = np.stack([time - dt, time + dt], axis=1)
         ds['time_bnds'] = (('time', 'bnds'), bounds)
         ds['time'].attrs.update({
             "bounds": "time_bnds"
