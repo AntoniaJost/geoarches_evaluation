@@ -22,6 +22,7 @@ class RenameVarsStep(Step):
         var_map    = cfg.get('var_mapping', {})
         unit_map   = cfg.get('unit_mapping', {})
         levels     = cfg.get('pressure_levels', [])
+        zg_to_500  = cfg.get('zg_to_500', False)
         time_slice = cfg.get('time_slice_daily', None)
 
         for in_dir in input_dirs:
@@ -107,9 +108,11 @@ class RenameVarsStep(Step):
                             self.logger.debug(f"[RenameVarsStep] Filtered {vars_with_level} to levels {ds.plev.values}")
 
                     # zg special case, for geopotential height only keep 500 hPa
-                    if 'zg' in ds and 'plev' in ds['zg'].dims:
+                    if 'zg' in ds and 'plev' in ds['zg'].dims and zg_to_500 is True:
                         ds['zg'] = ds['zg'].sel(plev=500, drop=False)
                         self.logger.debug(f"[RenameVarsStep] Reduced geopotential height (zg) to 500hPa")
+                    else:
+                        self.logger.debug(f"[RenameVarsStep] Keeping all pressure levels for geopotential height")
 
                     # for daily data only keep restriced time range 
                     if base_name == 'daily' and time_slice and 'time' in ds:
