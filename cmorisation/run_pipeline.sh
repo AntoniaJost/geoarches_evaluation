@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=cmor_m0v3s
+#SBATCH --job-name=cmor
 #SBATCH --time=04:00:00
 #SBATCH --partition=compute
 #SBATCH --account=bk1450
@@ -14,11 +14,13 @@ source /work/bk1450/a270220/aimip/bin/activate
 set -euo pipefail
 
 # ADJUST THESE 5 VARS ACCORDING TO YOUR DATA & STRUCTURE
-MODEL_TAG="archesgen-m-gc-sst_sic-weight_01_member00_v2"
+MODEL_TAG="AW-M-1-aimip-stats-forcings_surface" # part of folder path of input data
+NAME="ArchesWeather"
 ENSEMBLE="r0i1p1f1"
-TAG="archesgen-sst_sic_aimip_${ENSEMBLE}_gn"
-INPUT_DIR="/work/bk1450/b383170/eval/archesgen-m-gc-sst_sic-weight_01/1980-01-01T12:00_2100-01-01T12:00/daily/member_00"
-TIMESPAN="1980-2066" # timespan of your input files
+TAG="AW-M-1-aimip-stats-forcings_surface_aimip_${ENSEMBLE}_gn" # part of the input filename
+INPUT_DIR="/home/b/b383170/repositories/scripts/evalstore/AW-M-1-aimip-stats-forcings_surface/1980-01-01T12:00/daily/member_00/data"
+TIMESPAN="1980-2018" # timespan of your input files
+ZG_TO_500="true" # decide if zg (geopotential height) shall be reduced to only contain 500hPa
 
 export RUN_DIR="/work/bk1450/a270220/cmorised_awm/${MODEL_TAG}"
 mkdir -p "${RUN_DIR}/logs" \
@@ -29,9 +31,8 @@ mkdir -p "${RUN_DIR}/logs" \
          "${RUN_DIR}/4_cmorisation"
 
 # Create a per-run config to pass RUN_DIR, ENSEMBLE and MODEL_TAG
-export ENSEMBLE
-export MODEL_TAG
-envsubst '${RUN_DIR} ${ENSEMBLE} ${MODEL_TAG}' < config.yaml > "${RUN_DIR}/config.yaml"
+export ENSEMBLE MODEL_TAG ZG_TO_500 NAME
+envsubst '${RUN_DIR} ${ENSEMBLE} ${MODEL_TAG} ${ZG_TO_500} ${NAME}' < config.yaml > "${RUN_DIR}/config.yaml"
 echo "Wrote per-run config: ${RUN_DIR}/config.yaml"
 
 # DO NOT CHANGE THESE! 

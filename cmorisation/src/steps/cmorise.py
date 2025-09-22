@@ -12,7 +12,7 @@ from utils.cmor_helpers import (
 )
 from logger import GREEN, RED, WARN
 
-def _post_ncatted(path, var):
+def _post_ncatted(path, var, treat_as_plev=False):
     """
     Post-process NetCDF file using ncatted to remove or fix
     metadata attributes, depending on the variable.
@@ -34,7 +34,7 @@ def _post_ncatted(path, var):
             "-a", "_FillValue,lat_bnds,d,,",
             "-a", "_FillValue,lon_bnds,d,,",
         ]
-    elif var in ("ts", "psl", "zg"):
+    elif not treat_as_plev: #var in ("ts", "psl", "zg"): # ts, psl, (zg)
         # no plev
         args = [
             "-a", "_FillValue,time_bnds,d,,",
@@ -46,7 +46,7 @@ def _post_ncatted(path, var):
             "-a", "_FillValue,lon_bnds,d,,",
         ]
     else:
-        # ua, va, ta, hus  → include plev
+        # (zg), ua, va, ta, hus  → include plev
         args = [
             "-a", "_FillValue,time_bnds,d,,",
             "-a", "missing_value,time_bnds,d,,",
@@ -78,6 +78,7 @@ class CmoriseStep(Step):
         out_base       = cfg['output_root']
         freq_map   = {'monthly': 'Amon', 'daily': 'day'}
         frequency = {'monthly': 'mon', 'daily': 'day'} 
+        zg_to_500      = self.full_cfg["rename_vars"].get('zg_to_500', False)
 
         # generate tracking id (cmip convention)
         tracking_id = str(uuid.uuid4())
@@ -157,13 +158,17 @@ class CmoriseStep(Step):
                         "tracking_id": tracking_id,
                         "frequency": freq
                     })
+
+                    has_plev = ('plev' in ds[var].dims) if var in ds else False
+                    treat_as_plev = has_plev or (var == "zg" and zg_to_500)
+
                     # save dataset to netcdf
                     ds.to_netcdf(out_path)
                     self.logger.info(f"{GREEN} [CmoriseStep] Saved {out_path}")
                     ds.close()
 
                     # post‐process with ncatted to clean metadata
-                    _post_ncatted(out_path, var)
+                    _post_ncatted(out_path, var, treat_as_plev)
                     self.logger.info(f"{GREEN} [CmoriseStep] Saved & post-processed {out_path}")
 
                 except Exception as e:
