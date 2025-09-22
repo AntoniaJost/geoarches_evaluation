@@ -1,40 +1,77 @@
-model_name: "archesweather-m-seed0-gc-sst_sic-weight_05_01-ft_autoregressive"
+model_name: "archesweather-m-seed0-gc-sst_sic-weight_01-ft_autoregressive" #"archesgen-m-gc-sst_sic-weight_01" 
 type: "daily"
-period: "2007-01-01T12:00_2060-01-01T12:00"
+period: "1980-01-01T12:00"
+member: "member_00"
 evaluator: 
-  path: "evalstore/${model_name}/${period}/${type}"
-  era5_path: "data/era5_240/full"
-  era5_clim_path: Null
-  base_period: [1995, 2014]
+  #path: ["evalstore/${model_name}/${period}/${type}/member_0", "evalstore/${model_name}/${period}/${type}/member_1", "evalstore/${model_name}/${period}/${type}/member_2"]
+  
+  path: "evalstore/${model_name}/${period}/${type}/${member}"
+  reference_path: "data/era5_240/full"
+  base_period: [2007, 2018]
   variables: 
-    surface: []
-      #- "sea_surface_temperature"
-      #- "2m_temperature"
+    surface: 
+      - "sea_surface_temperature"
+      - "2m_temperature"
       #- "mean_sea_level_pressure"
-      #- "sea_ice_cover"
-    level:
-      #- "geopotential"
+      - "sea_ice_cover"
+    level: 
+      #- "specific_humidity"
+      - "geopotential"
       #- "u_component_of_wind"
       #- "temperature" 
-      - vertical_velocity
-  levels: [250, 500, 850]
-  output_path: "evalstore/climeval/${model_name}/${period}/${type}"
+      #- vertical_velocity
+  levels: [500]
+  output_path: "evalstore/${model_name}/${period}/${type}/${member}"
+  spinup_years: 0
+  start_stamp: "1980-01-01T12:00"
+  end_stamp: "2019-12-31T12:00"
 
 evaluate:
-  # anomaly_over_years:
-  #   variable:  "sea_surface_temperature"
-  #   level: Null
-  #   plot: True
-  # correlation:
-  #   variable1: 
-  #     name: "sea_surface_temperature"
-  #     level: Null
-  #   variable2: 
-  #     name: "geopotential"
-  #     level: 500
-  #   plot: True
-  #   era5_base: True
-  #   colormap: "coolwarm"
+  #annual_anomalies:
+  #  plot: True
+  #  against_reference: True
+  #annual_cycle:
+  #  plot: True
+  #  detrend: False
+  #  compare_to_reference: True
+
+  #latitude_time_plot: 
+  #  time_period: ["2017-01-01T12:00", "2020-12-31T12:00"]
+  #  against_reference: True
+
+  #indian_monsoon_index:
+  #  against_reference: True
+  #  period: ["2010-01-01T12:00", "2019-12-31T12:00"]
+  #  kinetic_energy: True
+
+  #radial_spectrum: 
+  #  against_reference: True
+  #  ref_year: 2000
+
+  #mean_climate: 
+  #  against_reference: True
+
+  enso34: 
+    power_spectrum: True
+    regression_analysis: True
+    against_reference: True
+    period: ["1982-01-01T12:00", "2019-12-31T12:00"]
+
+  #anomaly_over_years:
+  # variable:  "sea_surface_temperature"
+  #  level: Null
+  # plot: True
+  #  era5: False
+  #correlation:
+  #  variable1: 
+  #    name: "sea_surface_temperature"
+  #    level: Null
+  #  variable2: 
+  #    name: "geopotential"
+  #    level: 500
+  #  plot: True
+  #  era5_base: True
+  #  colormap: "coolwarm"
   #covariance:
   #  variable1: 
   #    name: "sea_surface_temperature"
@@ -44,24 +81,12 @@ evaluate:
   #    level: 500
   #  plot: True
   #  era5_base: True
-  # annual_cycle:
-  #   plot: True
-  #   plot_against_era5: True
-  # southern_oscillation_index:
-  #   plot: True
-  # anomalies:
-  #   type: "monthly"
-  #   year: 2015
-  #   plot: True 
-  variability_kde_timeseries:
-    variable: "temperature"   # not working for t2m, as it does not have 'level' dimension
-    level: 850                # use: null for surface vars
-    label_model: "ArchesWeather"
-    plot_era5: True
-    bandwidth: "scott"        # or a float, e.g., 0.2, or "silverman"/"scott"
-    detrend: True
-    output_fname: "kde_timeseries_t850_detrend"
 
+  #southern_oscillation_index:
+  # plot: True
+  #monthly_anomalies:
+  #  year: 2020
+  #  detrend: False
 
     
 
