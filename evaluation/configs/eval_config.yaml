@@ -1,13 +1,17 @@
-model_name: "archesweather-m-seed0-gc-sst_sic-weight_01-ft_autoregressive" #"archesgen-m-gc-sst_sic-weight_01" 
+model_name: "AW-M-1-aimip-stats-forcings_surface" #"archesgen-m-gc-sst_sic-weight_01" 
 type: "daily"
 period: "1980-01-01T12:00"
 member: "member_00"
 evaluator: 
   #path: ["evalstore/${model_name}/${period}/${type}/member_0", "evalstore/${model_name}/${period}/${type}/member_1", "evalstore/${model_name}/${period}/${type}/member_2"]
-  
-  path: "evalstore/${model_name}/${period}/${type}/${member}"
-  reference_path: "data/era5_240/full"
-  base_period: [2007, 2018]
+  reference_dimension_names:
+    latitude: latitude
+    longitude: longitude
+    time: valid_time
+    level: "pressure_level"
+  path: "evalstore/${model_name}/${period}/${type}/${member}/data"
+  reference_path: "data/era5_1x1/full"
+  base_period: [1993, 2014]
   variables: 
     surface: 
       - "sea_surface_temperature"
@@ -22,9 +26,8 @@ evaluator:
       #- vertical_velocity
   levels: [500]
   output_path: "evalstore/${model_name}/${period}/${type}/${member}"
-  spinup_years: 0
-  start_stamp: "1980-01-01T12:00"
-  end_stamp: "2019-12-31T12:00"
+  #start_stamp: "1980-01-01T12:00"
+  #end_stamp: "2019-12-31T12:00"
 
 evaluate:
   #annual_anomalies:
@@ -46,12 +49,12 @@ evaluate:
 
   #radial_spectrum: 
   #  against_reference: True
-  #  ref_year: 2000
+  #  ref_year: 1980
 
   #mean_climate: 
   #  against_reference: True
 
-  enso34: 
+  oceanic_nino_index: 
     power_spectrum: True
     regression_analysis: True
     against_reference: True
@@ -69,9 +72,8 @@ evaluate:
   #  variable2: 
   #    name: "geopotential"
   #    level: 500
-  #  plot: True
-  #  era5_base: True
   #  colormap: "coolwarm"
+  #  against_reference: True
   #covariance:
   #  variable1: 
   #    name: "sea_surface_temperature"
@@ -90,6 +92,3 @@ evaluate:
 
     
 
-
-
-  

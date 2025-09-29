@@ -67,7 +67,7 @@ class AAIMIPRollout:
             init_method=1, 
             physics=1, 
             forcings=1,
-            sst_scenario='',
+            sst_scenario='',  # either '', '2' or '4' indicating the sst scenario
             continue_rollout=True,
             replace_nans_from_state=True,
             replacement_method='daily', # daily, monthly forcings, running mean
@@ -133,7 +133,12 @@ class AAIMIPRollout:
             self.monthly_forcings = torch.stack(forcings, dim=0).unsqueeze(0).cuda()  # already in batch format
             self.land_sea_mask = self.dataset.forcings_ds['land_sea_mask'].to_numpy()  # (1, lat, lon)
             self.land_sea_mask = torch.tensor(self.land_sea_mask, dtype=torch.float32).cuda()  # (1, 1, lat, lon)
-            print(self.monthly_forcings.shape)
+            
+            if self.sst_scenario in ['2', '4']:
+                # Apply sst scenario adjustment to forcings
+                print(f"Applying SST scenario p{self.sst_scenario}K to forcings ...", end='')
+                sst_index = self.dataset.forcings_variables.index('sea_surface_temperature')
+                self.monthly_forcings[:, :, sst_index, ...] += float(self.sst_scenario)
 
             print('Done.')
         else:
@@ -152,10 +157,15 @@ class AAIMIPRollout:
             print(year)
         member = member or self.member
         
+        if self.sst_scenario in ['2', '4']:
+            sst_string = f"p{self.sst_scenario}"
+        elif self.sst_scenario == '':
+            sst_string = ''
+
         if self.storage_type == "monthly":
-            return f"Amon_{self.aimip_name}_aimip_r{member}i{self.init_method}p{self.physics}f{self.forcings}_{self.grid_type}_{year}_{month}.nc"
+            return f"A{sst_string}mon_{self.aimip_name}_aimip_r{member}i{self.init_method}p{self.physics}f{self.forcings}_{self.grid_type}_{year}_{month}.nc"
         elif self.storage_type == "daily":
-            return f"day_{self.aimip_name}_aimip_r{member}i{self.init_method}p{self.physics}f{self.forcings}_{self.grid_type}_{year}.nc"
+            return f"day{sst_string}_{self.aimip_name}_aimip_r{member}i{self.init_method}p{self.physics}f{self.forcings}_{self.grid_type}_{year}.nc"
         else:
             raise ValueError("Storage type must be either 'monthly' or 'daily'.")
 
@@ -171,6 +181,12 @@ class AAIMIPRollout:
         batch = {k: v.float() if 'state' in k else v for k, v in batch.items()}
         print(batch.keys())
 
+        if self.sst_scenario in ['2', '4']:
+            print(f"Applying SST scenario p{self.sst_scenario}K to state and prev state...", end='')
+            sst_index = self.dataset.forcings_variables.index('sea_surface_temperature')
+            batch['state']['surface'][:, sst_index, ...] += float(self.sst_scenario)
+            batch['prev_state']['surface'][:, sst_index, ...] += float(self.sst_scenario)
+            print('Done.')
         return batch
     
     def update_batch(self, loop_batch, prediction):

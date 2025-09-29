@@ -1,190 +1,75 @@
-import glob
 import os
+import glob
+import time
+import warnings
+
+from itertools import product
+
 import numpy as np
 import xarray as xr
-# importlib module for retrieving module path
-import hydra
-import importlib 
-#from geoclim import stats as climate_stats
 
-import warnings
-warnings.filterwarnings("ignore")
+
+import hydra
+from omegaconf import ListConfig, OmegaConf
 
 import matplotlib.pyplot as plt
-import pandas as pd 
-from cartopy.crs import PlateCarree, Robinson
-from cartopy import feature as cfeature
-from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
 
-from omegaconf import ListConfig, DictConfig
-from omegaconf import OmegaConf
+warnings.filterwarnings("ignore")
+
+
+from scipy.stats import linregress
+
+
 
 from geoarches.dataloaders.era5 import surface_variables_short, level_variables_short
-from metrics.southern_oscillation_index import calculate_southern_oscillation_index
-from metrics.kernel_density_estimation import variability_kde_timeseries as kde_variability_plot
+from metrics.utils import compute_anomaly, compute_mean, compute_std_dev, detrend_data
+from metrics.frequency_domain import compute_radial_spectrum, welch_psd
+from metrics import timeseries as eval_timeseries
+
+#from metrics.kernel_density_estimation import kde_variability_plot
+from plot.timeseries import plot_annual_oscillation, plot_timeseries, get_xlabel_multiplier
+from plot.spatial import plot_variable, plot_temperature_with_geopotential_contours, plot_anomalies
+from plot.spectra import plot_radial_spectrum
 
 #climate_stats_path = importlib.resources.files(climate_stats)
 
-def plot_soi(soi_data, time, output_path):
-    # function that plots the Southern Oscillation Index (SOI) data
-    # values larger than 0 are red and values smaller than 0 are blue
-    plt.figure(figsize=(15, 5), dpi=150)
-    time = list(set(time.astype('datetime64[M]').to_numpy()))  # Ensure time is in datetime format
-    time.sort()
-    ids = list(range(0, len(time)))
-    plt.plot(ids, soi_data, label="SOI", color='black')
 
-    # Highlight positive and negative values
-    positive = soi_data.where(soi_data > 0, drop=False)
-    negative = soi_data.where(soi_data < 0, drop=False)
-    pos_ids = (soi_data > 0).to_numpy().astype(np.int32).tolist()
-    neg_ids = (soi_data < 0).to_numpy().astype(np.int32).tolist()
-    pos_ids = [ids[i] for i, pidx in enumerate(pos_ids) if pidx == 1]
-    neg_ids = [ids[i] for i, nidx in enumerate(neg_ids) if nidx == 1]
-    print(len(pos_ids), len(neg_ids), len(ids))
-    plt.fill_between(ids, 0, positive, color='orange')
-    plt.fill_between(ids, 0, negative, color='paleturquoise')
+def plot_all_variables(fnc, data, variables, xticks, output_path, reference=None, std=None):
+    for var, lvl in variables:
+        print(f"Processing {var} at level {lvl}...")
+        x = data.sel(level=lvl)[var].to_numpy()
+        x_std = std.sel(level=lvl)[var].to_numpy() if std is not None else None
+        x_ref = reference.sel(level=lvl)[var].to_numpy() if reference is not None else None
+        var_name = surface_variables_short[var] if var in surface_variables_short.keys() else level_variables_short[var] + str(lvl)
+        
+        plot_timeseries(
+            time=time, 
+            xticks=xticks,
+            data=x,                 
+            ref=x_ref,
+            std=x_std,
+            output_path=output_path, 
+            variable_name=var_name, 
+        )
 
-    plt.axhline(0, color='black', linestyle='--', linewidth=0.5)
+def evaluate_ensemble(fnc):
+    def eval_ensemble(*args, **kwargs):
+        data = kwargs.pop("data", None)  # Remove 'data' from kwargs if it exists
 
-    years = list(set([t.astype('datetime64[Y]') for t in time]))
-    years.sort()
-    print(years)
-    plt.xticks(ticks=list(range(0, len(time), 12)), labels=years, rotation=45, ha='right')
-    
-    plt.grid()
-    
-    plt.title('Southern Oscillation Index (SOI)')
-    plt.xlabel('Time')
-    plt.ylabel('SOI')
-    
-    plt.legend()
-    
-    plt.tight_layout()
-    plt.savefig(f'{output_path}/soi_plot.png')
+        # Compute mean and std and pass it to the function
+        if 'member' in data.dims:
+            # Also fnc result to ensemble average
+            print('Eval ensemble mean ...', end=' ')
+            mean = data.mean(dim='member')
+            std = data.std(dim='member')
+            fnc(args[0], data=mean, std=std, **kwargs)
+            print("Done.")
+        else:
+            fnc(args[0], data=data, **kwargs)
 
-def plot_variable(x, fname, output_path, title=None, ax=None, cbar_label=None, cmap='viridis'):
-    # Plot a xarray DataArray with cartopy projection 
-    if ax is None:
-        fig, ax = plt.subplots(subplot_kw={'projection': Robinson()})
-    else:
-        fig = ax.figure
+    return eval_ensemble
 
-    ax.set_global()
-    ax.coastlines()
-    ax.add_feature(cfeature.BORDERS, linestyle=':')
-    ax.add_feature(cfeature.LAND, edgecolor='black')
-    ax.add_feature(cfeature.OCEAN, edgecolor='black')
 
-    ax.set_title(title)
-    img = ax.imshow(
-        x, transform=PlateCarree(), cmap=cmap, vmin=x.min(), vmax=x.max()
-    )
-
-    # Colorbar with triangular ends and smaller size
-    cbar = fig.colorbar(
-        img, ax=ax, orientation='horizontal',
-        pad=0.1, extend='both', shrink=0.7, aspect=30
-    )
-    cbar.set_label(cbar_label if cbar_label else "")
-
-    ax.gridlines(
-        draw_labels=True, 
-        dms=True, 
-        x_inline=False, 
-        y_inline=False
-    )
-
-    ax.xaxis.set_major_formatter(LONGITUDE_FORMATTER)
-    ax.yaxis.set_major_formatter(LATITUDE_FORMATTER)
-
-    plt.tight_layout()
-
-    if output_path:
-        plt.savefig(f"{output_path}/{fname}.png", dpi=300, bbox_inches='tight')
-
-    plt.close(fig)  # Close the figure to free memory
-
-def plot_anomalies(data, mean, variables, levels, output_path, anomaly_type="monthly"):
-    months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-    # Plot surface variables first
-    for var in variables["surface"]:
-        varx = data[var].to_numpy()
-        meanx = mean[var].to_numpy()
-        print(varx.shape, meanx.shape)
-        assert varx.shape[0] == 12, "Surface variable should have 12 months"
-        for i in range(varx.shape[0]):
-            title = f"{anomaly_type} Anomalies {months[i]} {surface_variables_short[var]} "
-            anomaly = varx[i] - meanx[i]
-            plot_variable(anomaly, fname=f"{anomaly_type}_anomaly_{months[i]}_{surface_variables_short[var]}", output_path=output_path, title=title)
-
-    # Plot level variables
-    for var in variables["level"]:
-        for lvl in levels:
-            varx = data[var].sel(level=lvl).to_numpy()
-            meanx = mean[var].sel(level=lvl).to_numpy()
-            assert varx.shape[0] == 12, "Level variable should have 12 months"
-            for i in range(varx.shape[0]):
-                title = f"{anomaly_type} Anomalies {months[i]} {level_variables_short[var]}{lvl}"
-                plot_variable(
-                    varx[i] - meanx[i], 
-                    fname=f"{anomaly_type}_anomaly_{months[i]}_{level_variables_short[var]}{lvl}", 
-                    output_path=output_path, 
-                    title=title
-                )
-
-def plot_temperature_with_geopotential_contours(temp, geopotential, level, output_path, title):
-
-    # Use cartopy to plot temperature with geopotential contours
-    fig, ax = plt.subplots(subplot_kw={'projection': Robinson()})
-    ax.set_global()
-    ax.coastlines()
-    ax.add_feature(cfeature.BORDERS, linestyle=':')
-    ax.add_feature(cfeature.LAND, edgecolor='black')
-
-    # Plot temperature and geopotential
-    temp.plot(ax=ax, transform=Robinson(), cmap='coolwarm', vmin=temp.min(), vmax=temp.max())
-    geopotential.plot.contour(ax=ax, transform=PlateCarree(), levels=4, cmap='gray', linewidths=1.)
-    ax.set_title(title)
-
-    plt.savefig(f"{output_path}/2m_temp_geopotential_{level}.png", dpi=300, bbox_inches='tight')
-    plt.close(fig)
-
-def plot_annual_oscillation(data, output_path, variable_name, add_linear_trend=True, ref=None):
-    """
-    Plot the annual oscillation of a variable.
-    
-    :param data: The data to plot.
-    :param variable_name: The name of the variable to plot.
-    :return: None
-    """
-    plt.figure(figsize=(15, 5), dpi=150)
-    plt.plot(data, label="Prediction", color='blue')
-
-    if ref is not None:
-        plt.plot(ref, label=f'ERA5 {variable_name}', linestyle='--', color='orange')
-    plt.xticks(rotation=45)
-    plt.grid()
-    plt.title(f'Annual Oscillation of {variable_name}')
-    plt.xlabel('Time')
-
-    # find first occurence of years 1980, 1985, 1990 ... in data['time']
-    time = data['time'].values
-    years = pd.date_range(start=time[0], end=time[-1], freq='YS')
-    indices = [np.where(time == year)[0][0] for year in years if year in time]
-
-    if add_linear_trend:
-        # Add a linear trend line
-        z = np.polyfit(np.arange(len(data)), data, 1)
-        p = np.poly1d(z)
-        plt.plot(np.arange(len(data)), p(np.arange(len(data))), label='Trend', linestyle='--', color='black')
-
-    xticklabels = np.datetime_as_string(time[indices], unit="Y")
-    plt.xticks(ticks=indices, labels=xticklabels, rotation=90)
-    plt.ylabel(variable_name)
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(f'{output_path}/annual_oscillation_{variable_name}.png')
 
 class ClimateEvaluator:
     """
@@ -193,8 +78,33 @@ class ClimateEvaluator:
     R = 6.371e6  # Radius of the Earth in meters
     g = 9.81     # Acceleration due to gravity in m/s^2
     pi = 3.14159
+    units = {
+        'sea_surface_temperature': '[K]',
+        '2m_temperature': '[K]',
+        'mean_sea_level_pressure': '[Pa]',
+        'specific_humidity': '[kg/kg]',
+        'geopotential': '[m^2/s^2]',
+        'u_component_of_wind': '[m/s]',
+        'v_component_of_wind': '[m/s]',
+        '10m_u_component_of_wind': '[m/s]',
+        '10m_v_component_of_wind': '[m/s]',
+        'sea_ice_cover': '[fraction]',
+        'temperature': '[K]',
+        'vertical_velocity': '[m/s]',
 
-    def __init__(self, path, variables=None, levels=None, era5_clim_path=None, clim_stats=None, era5_path=None, base_period=(1995, 2014), output_path=None):
+    }
+
+    short_names = {**surface_variables_short, **level_variables_short}
+
+    def __init__(
+            self, path, variables, levels, 
+            reference_path=None, base_period=(1995, 2014), 
+            output_path=None, spinup_years=3, 
+            start_stamp=None, end_stamp=None, 
+            target_dimension_indexers=None,
+            reference_dimension_names=None
+        ):
+
         """
         Initialize the ClimateEvaluator with data.
         
@@ -210,125 +120,267 @@ class ClimateEvaluator:
         and expected to have dimension time, level, latitude, longitude.
 
         """
-        fpaths = glob.glob(path + "/*.nc")
-        fpaths.sort()
-        # Load prediction data
-        print("Opening prediction data from:", path, " ...", end=" ")
-        self.data = xr.open_mfdataset(fpaths, combine="by_coords")
+
+        if isinstance(path, ListConfig):
+            path = list(path)
+            
+            # list of members
+            print("Opening prediction data from multiple members:", path, " ...", end=" ")
+            datasets = [xr.open_mfdataset(sorted(glob.glob(p + "/*.nc")), combine="by_coords") for p in path]
+            self.data = xr.concat(datasets, dim='member')
+            self.data["member"] = np.arange(0, len(path))  # Add member dimension
+            #self.data = self.data.set_coords("member")
+            print("Done.")
+        else:
+            fpaths = glob.glob(path + "/*.nc")
+            fpaths.sort()
+            print("Opening prediction data from:", path, " ...", end=" ")
+            self.data = xr.open_mfdataset(fpaths, combine="by_coords")
+            print('Done')
+
+        print(self.data.time.values)
+
         self.data = self.data.roll(longitude=-len(self.data.longitude) // 2, roll_coords=False)  # Roll longitude to match data
-
-        print("Done.")
-
-        # Open climatology data
-
-        self.era5_clim = xr.load_dataset(era5_clim_path) if era5_clim_path else None
-
-        # Open era5 
-        if era5_path is not None:
-            era5_files = glob.glob(era5_path + "/*.nc")
-            era5_files.sort()
+        #t2m = self.data.isel(time=0)['2m_temperature'].to_numpy()
+        #plt.figure()
+        #plt.imshow(t2m)
+        #plt.savefig('t2m_test_2.png')
+        
+        if spinup_years:
+            self.data = self.data.sel(time=self.data.time.dt.year >= self.data.time.dt.year[0] + spinup_years)
+        
+        # Open reference data
+        if reference_path is not None:
+            reference_files = glob.glob(reference_path + "/*.nc")
+            reference_files.sort()
 
             # extract hour from self.data time dimension and only keep files that match the hour
             hour = int(self.data.time.dt.hour[0])
-            era5_files = [f for f in era5_files if f"{hour:02d}" in f]
-            if not era5_files:
-                raise FileNotFoundError(f"No ERA5 files found for hour {hour} in {era5_path}")
-            
-            # preprocess files such that time dimension has datetime64[day] type  
-            # This avoids issues with non-monotonic time dimension being datetime64[ns] 
-            # in ERA5 files
-            def preprocess_time(ds):
+            reference_files = [f for f in reference_files if f"{hour:02d}" in f]
+            if not reference_files:
+                raise FileNotFoundError(f"No reference files found for hour {hour} in {reference_path}")
+
+            # preprocess files such that time dimension has datetime64[day] type
+            # This avoids issues with non-monotonic time dimension being datetime64[ns]
+            # in reference files
+            def preprocess(ds, reference_dimension_names=reference_dimension_names):
+                if reference_dimension_names is not None:
+                    ds = ds.rename({v: k for k, v in reference_dimension_names.items()})
                 ds['time'] = ds['time'].astype('datetime64[D]')
+                if ds.latitude[0] > ds.latitude[-1]:  # if latitude is descending
+                    ds = ds.reindex(latitude=list(reversed(ds.latitude)))
                 return ds
+
+
+            self.reference = xr.open_mfdataset(reference_files, combine='by_coords', preprocess=preprocess)
+            self.reference = self.reference.transpose('time', 'level', 'latitude', 'longitude')
+            self.reference = self.reference.reindex(latitude=list(reversed(self.reference.latitude)))
             
-            self.era5 = xr.open_mfdataset(era5_files, combine='by_coords', preprocess=preprocess_time)
-            self.era5 = self.era5[list(self.data.data_vars.keys())]
-            self.era5 = self.era5.transpose('time', 'level', 'latitude', 'longitude')
-            self.era5 = self.era5.reindex(latitude=list(reversed(self.era5.latitude)))
-                    # Roll data
-            self.era5 = self.era5.roll(longitude=-len(self.era5.longitude) // 2, roll_coords=False)  # Roll longitude to match data
+            # Roll data
+            self.reference = self.reference.roll(longitude=-len(self.reference.longitude) // 2, roll_coords=False)  # Roll longitude to match data
+            self.land_sea_mask = self.reference['land_sea_mask'].to_numpy()[0]
+            self.reference = self.reference[list(self.data.data_vars.keys())]
 
         else:
-            self.era5 = None
-            
+            self.reference = None
+
+        if start_stamp is not None or end_stamp is not None:
+            self.data = self.data.sel(time=slice(start_stamp, end_stamp))
+
+            if self.reference is not None:
+                self.reference = self.reference.sel(time=slice(start_stamp, end_stamp))
+
         self.base_period = base_period
         self.output_path = output_path
+        self.variables = [(var, slice(None)) for var in variables['surface']]
+        self.variables.extend(product(variables['level'], levels)) 
 
-        if variables is None:
-            self.variables = {
-                "surface": self.data.variables.intersection(surface_variables_short.keys()).tolist(),
-                "level": self.data.variables.intersection(level_variables_short.keys()).tolist()
-            }
+    def get_variable_short_name(self, var, level=None):
+        """ Get short name for variable """
+        if var in surface_variables_short.keys():
+            return surface_variables_short[var]
+        elif var in level_variables_short.keys():
+            return level_variables_short[var] + str(level)
         else:
-            self.variables = variables 
-
-        if levels is None:
-            self.levels = self.data.level.values.tolist()
-        else:
-            self.levels = levels
-
-    def anomalies(self, type="monthly", year=2015, plot=False):
-        era5 = self.era5.sel(time=slice(f"{self.base_period[0]}-01-01", f"{self.base_period[1]}-12-31"))        
-        era5 = era5.fillna(value=era5.mean(dim=["latitude", "longitude"], skipna=True))
-        if type == "monthly":
-            mean = era5.groupby('time.month').mean('time', skipna=True)
-            data = self.data.sel(time=self.data.time.dt.year==year)
-            data = data.groupby(['time.month']).mean('time')   
-        elif type == "daily":
-            mean = era5.groupby('time.dayofyear').mean('time')
-            data = self.data.sel(time=self.data.time.dt.year==year)
-            data = data.groupby(['time.dayofyear'])
-        else:
-            raise ValueError("Invalid type. Choose 'monthly' or 'daily'.")
+            return var + (str(level) if level is not None else '')
         
+    def select_reference_data(self, x, detrend=False):
+            """ 
+            Select time reference data for a given dataset x.
+
+            """
+            reference = self.reference
+            reference = reference.sel(time=(reference.time >= x.time[0]) & (reference.time <= x.time[-1]))
+
+            if detrend:
+                reference = detrend_data(reference, self.base_period, ['sea_surface_temperature', '2m_temperature'])
+
+            return reference
+
+    def monthly_anomalies(self, data, detrend=False, year=2020):
+
+
+        print("Calculate anomalies ... ", end='')
+
+        anomaly = compute_anomaly(
+            data,
+            reduce_dims=['time'],
+            groupby=['time.year', 'time.month'],
+            mean_groupby=['time.month'],
+            base_period=self.base_period,
+            detrend=detrend
+        )
+
+        print('Done')
+
+        
+        # Get group from year arg 
+        print(f"Select anomalies for year {year} and precompute ... ", end='')
+
+        if year == 'all':
+            anomaly = anomaly.mean("year")
+        else:
+            anomaly = anomaly.sel(year=year)
+            anomaly = anomaly.drop_vars('year')
+
+
+        anomaly = anomaly.compute()
+
+        if self.reference is not None:
+            mask = self.reference.isel(
+                **{self.time_dim_name: 0}, drop=True)['sea_surface_temperature'].to_numpy()
+            print(mask.shape)
+            mask = np.isnan(mask)
+        else: 
+            mask = None
+
+        # Reorder dimensions
+        anomaly = anomaly.transpose('month', 'level', 'latitude', 'longitude')
+
         # Store anomalies on disk
-        os.makedirs(f"{self.output_path}/anomalies/{type}", exist_ok=True)
-        
-        if self.output_path:
-            output_path = f"{self.output_path}/anomalies/{type}"
-            
-            #anomalies.to_netcdf(f"{output_path}/anomalies_{type}_{self.base_period[0]}_{self.base_period[1]}.nc")
-       
-        if plot:
-            os.makedirs(f"{self.output_path}/anomalies/{type}/plots", exist_ok=True)
-            output_path = f"{self.output_path}/anomalies/{type}/plots"
+        path = f"{self.output_path}/climeval/monthly_anomalies"
+        os.makedirs(path, exist_ok=True)
 
-            plot_anomalies(data, mean, self.variables, self.levels, output_path, anomaly_type=type) 
+        #anomaly.to_netcdf(f"{path}/monthly_anomalies_base_{self.base_period[0]}_{self.base_period[1]}.nc")
+        print('Plot anomalies ... ', end='')
+        plot_anomalies(anomaly, variables=self.variables, levels=self.levels, output_path=path, anomaly_type='Monthly', mask=mask)
+        print('Done')
 
-        return 0
+    @evaluate_ensemble
+    def mean_climate(self, data, against_reference=False, **kwargs):
+        data = detrend_data(
+            data=data, 
+            base_period=self.base_period, 
+            variables_to_detrend=['2m_temperature', 'sea_surface_temperature']
+        )
 
-    def annual_cycle(self, plot=True, plot_against_era5=False):
+        mean_pred = compute_mean(data, reduce_dims=['time', 'latitude', 'longitude'], base_period=None, groupby=['time.dayofyear'])
+        mean_pred = mean_pred.compute()
+        if against_reference and self.reference is not None:
+            reference = self.reference.sel(time=(self.reference.time >= data.time[0]) & (self.reference.time <= data.time[-1]))
+            reference = detrend_data(
+                data=reference, 
+                base_period=self.base_period,
+                variables_to_detrend=['2m_temperature', 'sea_surface_temperature']
+            )
+            reference = compute_mean(reference, reduce_dims=['time', 'latitude', 'longitude'], groupby=['time.dayofyear'])
+            reference = reference.compute()
+        elif against_reference and self.reference is None:
+            warnings.warn("Reference data not provided or not available. Skipping reference comparison.")
+            reference = None
+        else:
+            reference = None
 
-        data =  self.data.mean(['latitude', 'longitude'])
-        output_path = f"{self.output_path}/annual_oscillation"
 
+        # Make time labels like month-dd and assume 365 days
+        months = list(range(1, 13))
+        days = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]
+        labels = [f"{m:02d}-01" for m in months]
+
+        if "std" in kwargs.keys():
+            std = kwargs["std"]
+            std = compute_mean(std, reduce_dims=['time', 'latitude', 'longitude'], groupby=['time.dayofyear'])
+            std = std.compute()
+
+            std = None
+
+        output_path = os.path.join(self.output_path, "climeval", "monthly_mean", "plots")
         os.makedirs(output_path, exist_ok=True)
+
+        for v, lvl in self.variables:
+            plot_timeseries(
+                x=mean_pred.sel(level=lvl)[v], 
+                ref=reference.sel(level=lvl)[v] if reference is not None else None, 
+                xticks=[days, labels],
+                title="Monthly Mean " + level_variables_short[v] + str(lvl),
+                xlabel='Time',
+                ylabel=self.units[v],
+                output_path=os.path.join(output_path, f"monthly_mean_{level_variables_short[v]}_{lvl}.png"),
+                std=std.sel(level=lvl)[v] if std is not None else None
+            )
+
+    
+    def _annual_cycle(self, data, detrend):
+
+        print('Compute annual cycle ... ', end='')
+        annual_cycle = eval_timeseries.compute_annual_cycle(data, detrend, self.base_period)
+        print('Done')
+
+        return annual_cycle
+
+
+    @evaluate_ensemble
+    def annual_cycle(self, data, detrend=False, against_reference=False, **kwargs):
         
-        # era5 has to start at the same time as self.data
-        if self.era5 is not None:
-            era5 = self.era5.fillna(value=self.era5.mean(dim=["latitude", "longitude"], skipna=True))
-            era5 = era5.sel(time=slice(data.time.min(), data.time.max()))
+        # Specify output path
+        output_path = f"{self.output_path}/climeval/annual_cycle"
+        os.makedirs(output_path, exist_ok=True)
 
-        if plot:
-            op = f"{self.output_path}/annual_oscillation/plots"
-            os.makedirs(op, exist_ok=True)
-            for var in self.variables['surface']:
-                x = data[var]
-                plot_annual_oscillation(
-                    x, op, surface_variables_short[var], 
-                    ref=era5[var].mean(['latitude', 'longitude']).to_numpy() if plot_against_era5 else None)
+        print('Compute annual cycle ... ', end='')
+        annual_cycle = eval_timeseries.compute_annual_cycle(data, detrend, self.base_period)
+        annual_cycle.to_netcdf(f"{output_path}/data.nc")
 
-            for var in self.variables['level']:
-                for lvl in self.levels:
-                    x = data[var].sel(level=lvl)
-                    plot_annual_oscillation(
-                        x, op, level_variables_short[var] + str(lvl), 
-                        ref=era5[var].mean(['latitude', 'longitude']).sel(level=lvl).to_numpy() if plot_against_era5 else None)
+        if 'std' in kwargs.keys():  # if ensemble
+                print('Standard deviation of annual cycle ... ', end='')
+                std_annual_cycle = eval_timeseries.compute_annual_cycle(kwargs['std'], detrend)
+                std_annual_cycle.to_netcdf(f"{output_path}/std_annual_cycle.nc")
+                print('Done')
+
         
-        # store the annual oscillation data
-        x.to_netcdf(f"{output_path}/annual_oscillations.nc")
+        print('Done')
 
-        return 
+        # reference has to start at the same time as self.data
+        if against_reference:
+            print('Compute reference annual cycle ... ', end='')
+            ref_annual_cycle = self._annual_cycle(self.select_reference_data(data, detrend=False), detrend=detrend)
+            #ref_annual_cycle.to_netcdf(f"{output_path}/reference_annual_cycle.nc")
+            print('Done')
+
+        if 'std' in kwargs.keys():  # if ensemble
+            print('Standard deviation of annual cycle ... ', end='')
+            std_annual_cycle = self._annual_cycle(kwargs['std'], detrend)
+            #std_annual_cycle.to_netcdf(f"{output_path}/std_annual_cycle.nc")
+            print('Done')
+        else:
+            std = None
+
+        for v, lvl in self.variables:
+            var_name = surface_variables_short[v] if v in surface_variables_short.keys() else level_variables_short[v] + str(lvl)
+            xtick_labels = [f'{y:02d}-{m:02d}' for y, m in annual_cycle.time.values]
+            xtick_ids = list(range(len(xtick_labels)))
+            mult = get_xlabel_multiplier(len(xtick_ids))
+            xticks = [xtick_ids[::mult], xtick_labels[::mult]]
+            plot_timeseries(
+                x=annual_cycle.sel(level=lvl)[v],
+                ref=ref_annual_cycle.sel(level=lvl)[v] if against_reference else None,
+                xticks=xticks,
+                title='Annual Cycle ' + var_name,
+                xlabel='Time',
+                ylabel=self.units[v],
+                output_path=os.path.join(output_path, f'annual_cycle_{var_name}.png'),
+                std=std_annual_cycle.sel(level=lvl)[v] if std is not None else None
+            )
+        return
 
     def select_seasonal_data(self, year, season):
         """
@@ -427,7 +479,7 @@ class ClimateEvaluator:
 
         return index
     
-    def southern_oscillation_index(self, plot=True, month=None, year=None):
+    def southern_oscillation_index(self, data, plot=True):
         """
         Compute the Southern Oscillation Index (SOI) for a given year and month.
         If year and month are provided, filter the data accordingly.
@@ -438,43 +490,249 @@ class ClimateEvaluator:
         :return: SOI index.
         """
 
-        data = self.data.sel(time=slice(f"{year}-{month}-01", f"{year}-{month}-31")) if year and month else self.data        
-        era5 = self.era5.sel(time=slice(f"{self.base_period[0]}-01-01", f"{self.base_period[1]}-12-31")) if self.era5 is not None else None
         
         # Extract time dimension and ensure it is in datetime format month
-        time = data['time']
+        time = data['time'].to_numpy()
 
         # Get the ERA5 climatology data for tahiti and darwin
-        data = data.groupby(['time.year','time.month']).mean('time')
+        soi = eval_timeseries.southern_oscillation_index(
+            data['mean_surface_level_pressure'], 
+            base_period=self.base_period, 
+            detrend=True
+        )
 
-        soi = calculate_southern_oscillation_index(data, era5)
-
-        # Get tahiti and darwin mean sea level pressure
-        """mslp_tahiti = data['mean_sea_level_pressure'].sel(latitude=-17.65, longitude=-149.57 + 180, method='nearest')
-        mslp_darwin = data['mean_sea_level_pressure'].sel(latitude=-12.46, longitude=130.84 + 180, method='nearest')
-
-        mslp_tahiti_era5 = tahiti_era5['mean_sea_level_pressure']
-        mslp_darwin_era5 = darwin_era5['mean_sea_level_pressure']
-
-        # Calculate the SOI
-        pdiff = mslp_tahiti - mslp_darwin
-        pdiff_avg = (mslp_tahiti_era5  - mslp_darwin_era5).groupby(['time.month']).mean(dim='time')
-        pdiff_std = (mslp_tahiti_era5 - mslp_darwin_era5).groupby(['time.month']).std(dim='time')
-
-        soi = 10 * (pdiff - pdiff_avg) / pdiff_std
-        soi = soi.compute()
-        soi = soi.stack(time=('year', 'month'), create_index=True).transpose('time', ...)"""
-        
+        # Get tahiti and darwin mean sea level pressure  
         if plot:
-            output_path = f"{self.output_path}/soi/plots"
-            os.makedirs(output_path, exist_ok=True)
-            plot_soi(soi, time=time, output_path=output_path)
+            output_path = f"{self.output_path}/climeval/soi/plots"
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            plot_timeseries(
+                soi, 
+                xticks=time.astype('datetime64[M]'), 
+                output_path=os.path.join(output_path, "soi_plot.png"),
+                title='SOI',
+                xlabel='Time',
+                ylabel='°C',
+                fill='positive_negative',
+                label=None
+            )
 
         # store the SOI data
         #soi.to_netcdf(f"{self.output_path}/soi.nc")
 
         return 0
     
+    def _compute_indian_monsoon_index(self, data, period, kinetic_energy=False):
+        u850_1 = data.sel(longitude=slice(220, 260), latitude=slice(15, 5), level=850)['u_component_of_wind']
+        u850_2 = data.sel(longitude=slice(250, 270), latitude=slice(30, 20), level=850)['u_component_of_wind']
+
+        if period:
+            u850_1 = u850_1.sel(**{self.time_dim_name:slice(period[0], period[1])})
+            u850_2 = u850_2.sel(**{self.time_dim_name:slice(period[0], period[1])})
+
+        if kinetic_energy:
+            v850_1 = data.sel(longitude=slice(220, 260), latitude=slice(15, 5), level=850)['v_component_of_wind']
+            v850_2 = data.sel(longitude=slice(250, 270), latitude=slice(30, 20), level=850)['v_component_of_wind']
+
+            ke850_1 = 0.5 * (u850_1 ** 2 + v850_1 ** 2).mean(['latitude', 'longitude'])
+            ke850_2 = 0.5 * (u850_2 ** 2 + v850_2 ** 2).mean(['latitude', 'longitude'])
+
+            ke850 = ke850_1 + ke850_2
+            ke850 = ke850.groupby('time.dayofyear').mean(dim=['time'])
+            return ke850
+        else:
+            imd_index = u850_1.mean(['latitude', 'longitude']) - u850_2.mean(['latitude', 'longitude'])
+
+            imd_index = imd_index.groupby('time.dayofyear').mean(dim=['time'])
+
+            print('imd_index: ', imd_index)
+        
+            return imd_index
+    
+    @evaluate_ensemble
+    def indian_monsoon_index(self, data, kinetic_energy=False, period=None, against_reference=False, ref='', **kwargs):
+
+        imd_index = self._compute_indian_monsoon_index(data, period, kinetic_energy=kinetic_energy)
+
+        #if 'std' in kwargs.keys():  # if ensemble
+        #    std = kwargs['std']
+        #   std_imd_index = self._compute_indian_monsoon_index(std, period)
+        #    std_imd_index = std_imd_index.groupby('time.dayofyear').mean(dim=['time', 'latitude', 'longitude'])
+
+        if against_reference and self.reference is not None:
+            reference = self._compute_indian_monsoon_index(self.reference, period, kinetic_energy=kinetic_energy)
+        
+        xtick_labels = ['January', 'February', 'March', 'April', 
+                'May', 'June', 'July', 'August', 'September', 
+                'October', 'November', 'December'
+                ]
+
+        if len(imd_index.dayofyear) == 366:
+            xtick_ids = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334]
+        else:
+            xtick_ids = [0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]
+
+        output_path = f"{self.output_path}/climeval/imd/plots"
+        os.makedirs(output_path, exist_ok=True)
+
+        if kinetic_energy:
+            title = f"{period[0]}-{period[1]} IMD Kinetic Energy"
+            fname = f"{period[0]}-{period[1]}_imd_kinetic_energy_timeseries.png"
+        else:
+            title = f"{period[0]}-{period[1]} Indian Monsoon Index"
+            fname = f"{period[0]}-{period[1]}_imd_timeseries.png"
+
+        
+        plot_timeseries(
+            x=imd_index,
+            ref=reference if against_reference and self.reference is not None else None,
+            std=None, # if 'std' in kwargs.keys() else None,
+            xticks=[xtick_ids, xtick_labels],
+            title=title,
+            xlabel='Time',
+            ylabel='[m/s]',
+            output_path=os.path.join(output_path, fname),
+            linewidth=2
+        )
+
+    def regression_analysis(self, data, index):
+        """
+        This method performs regression analysis on against a given climate index like ONI or Webster-Yang.
+        """
+
+        lat = data.latitude
+        lon = data.longitude
+
+        data = data.compute().to_numpy()
+        index = index.to_numpy()  
+        regression_map = np.empty((len(lat), len(lon)))  # Regression map to store slopes
+
+        for i in range(len(lat)):
+            for j in range(len(lon)):
+                x = data[:, i, j]
+                if np.all(np.isfinite(x)):
+                    slope, _, r, _, _ = linregress(index, x)
+                    regression_map[i, j] = slope
+                else:
+                    regression_map[i, j] = np.nan
+        
+
+
+        return regression_map
+    
+    def _oni(self, data, period=None, power_spectrum=False, regression_analysis=False):
+        assert 'sea_surface_temperature' in list(self.data.data_vars.keys()), \
+            "Missing sea_surface_temperature variable"
+
+        if period:
+            data = data.sel(time=slice(period[0], period[1]))
+
+        nino34, sst = eval_timeseries.compute_oni_index(
+            data=data, 
+            base_period=self.base_period, 
+            detrend=True
+        )
+
+        # make time multindex normal index
+        nino34 = nino34.reset_index('time')
+        sst = sst.reset_index('time')
+
+        if power_spectrum:
+            np_nino34 = nino34.to_numpy()
+
+            spec_tuple = welch_psd(np_nino34)  # frequency, power_spectrum
+        else:
+            spec_tuple = None
+
+        if regression_analysis:
+            regression_map = self.regression_analysis(sst, nino34)
+        else:
+            regression_map = None
+        return nino34, spec_tuple, regression_map 
+    
+    #@evaluate_ensemble
+    def oceanic_nino_index(self, data, against_reference=False, power_spectrum=False, regression_analysis=False, ref='', period=None, **kwargs):
+
+    
+        if period is None:
+            output_path = f"{self.output_path}/climeval/oceanic_nino_index/plots/full"
+        else:
+            output_path = f"{self.output_path}/climeval/oceanic_nino_index/{period[0]}_{period[1]}"
+
+        os.makedirs(output_path, exist_ok=True)
+
+        print(f"Compute Oceanic Nino Index for period {period} ... ", end='')
+        nino34, psd, reg_map = self._oni(
+            data, period=period, 
+            power_spectrum=power_spectrum, 
+            regression_analysis=regression_analysis
+        )
+        nino34.to_netcdf(f"{output_path}/data.nc")
+
+        print('Done')
+
+        if against_reference and self.reference is not None:
+            print("Compute Oceanic Nino Index for reference data ... ", end='')
+            reference = self.select_reference_data(data, detrend=True)
+            nino34_ref, psd_ref, ref_reg_map = self._oni(
+                reference, 
+                period=period, 
+                power_spectrum=power_spectrum, 
+                regression_analysis=regression_analysis
+            )
+            
+            nino34_ref.to_netcdf(f"{output_path}/reference_data.nc")
+
+        plot_timeseries(
+            nino34, 
+            xticks=nino34.time.values.astype('datetime64[M]'),
+            xlabel=r'Time',
+            ylabel=r'°C',
+            output_path=os.path.join(output_path, f'era5_nino34_timeseries.png'),
+            label='ONI', 
+            fill='positive_negative', 
+            ref=nino34_ref,
+            ref_label='ERA5' if against_reference else None,
+        )    
+
+
+        if power_spectrum:
+            # make xticks only 2 decimals 
+            xtick_labels = [f"{x :.2f}" for x in psd[0]]
+
+            plot_timeseries(
+                psd[1], 
+                #xticks=xtick_labels, 
+                title='PSD of ONI',
+                xlabel='Frequency (1/month)', 
+                ylabel='Power', 
+                output_path=f"{output_path}/{ref}psd.png",
+                linewidth=2, 
+                marker='o', 
+                ref=psd_ref[1] if psd_ref is not None else None, 
+                ref_label='ERA5' if against_reference else None,) 
+
+        if regression_analysis:    
+            plot_variable(
+                reg_map, 
+                extent=(-120, 130, 50, -50), 
+                title='Nino3.4 Regression Map', 
+                cmap='coolwarm', cbar_label='K/(K)', 
+                fname=f'nino34_regression_map.png', 
+                output_path=output_path, 
+                central_longitude=180, 
+                global_projection='Robinson', 
+                #patch_kwargs=dict(
+                #    xy=(lon_ids[0] + len(lon) // 2, lat_ids[0]),
+                #    width=len(lon_ids), 
+                #    height=len(lat_ids),
+                #    fill=False,
+                #    edgecolor='black', 
+                #    linewidth=1.0),
+                #    vmin=vmin, vmax=vmax
+
+                )
+
+
     def covariance(self, variable1, variable2, era5_base=False,  plot=True):
         """
         Compute the covariance between two variables in the dataset.
@@ -482,8 +740,9 @@ class ClimateEvaluator:
         :param variable1: First variable to compute covariance.
         :param variable2: Second variable to compute covariance.
         :return: Covariance as an xarray DataArray.
+        
+        pass
         """
-
         variable1_name = variable1.name
         variable1_level = variable1.level
         variable2_name = variable2.name
@@ -501,7 +760,6 @@ class ClimateEvaluator:
             data = self.data.sel(level=variable2_level)
             era5 = self.era5.sel(level=variable2_level) if era5_base and self.era5 is not None else None
 
-            
      
         # Use the dataset's own climatology for covariance calculation
         print(f"Computing covariance between {variable1_name} and {variable2_name} at level {variable1_level} and {variable2_level} ...", end=" ")
@@ -534,8 +792,9 @@ class ClimateEvaluator:
                 plot_variable(era5_cov.compute(), fname=fname, output_path=output_path, title=title, cbar_label="Covariance")
 
         return cov
+
     
-    def correlation(self, variable1, variable2, era5_base=False, plot=True, colormap='coolwarm'):
+    def correlation(self, data, variable1, variable2, against_reference=True, colormap='coolwarm', ref=''):
         # as covariance, but compute correlation instead
 
         """        Compute the correlation between two variables in the dataset.
@@ -544,53 +803,54 @@ class ClimateEvaluator:
         :return: Correlation as an xarray DataArray.
         """ 
 
-        variable1_name = variable1.name
-        variable1_level = variable1.level
+        variable1_name = variable1['name']
+        variable1_level = variable1['level']
 
-        variable2_name = variable2.name
-        variable2_level = variable2.level
+        variable2_name = variable2['name']
+        variable2_level = variable2['level']
         if variable1_level is not None:
             if variable1_level not in self.data.level.values:
                 raise ValueError(f"Level {variable1_level} for variable {variable1_name} not found in the dataset. Available levels: {self.data.level.values}")
-            data = self.data.sel(level=variable1_level)
-            era5 = self.era5.sel(level=variable1_level) if era5_base and self.era5 is not None else None
+            data = data.sel(level=variable1_level)
+            #era5 = self.era5.sel(level=variable1_level) if era5_base and self.era5 is not None else None
 
         if variable2_level is not None:
             if variable2_level not in self.data.level.values:
                 raise ValueError(f"Level {variable2_level} for variable {variable2_name} not found in the dataset. Available levels: {self.data.level.values}")
-            data = self.data.sel(level=variable2_level)
-            era5 = self.era5.sel(level=variable2_level) if era5_base and self.era5 is not None else None
+            data = data.sel(level=variable2_level)
+            
+            #era5 = self.era5.sel(level=variable2_level) if era5_base and self.era5 is not None else None
         
         # Use the dataset's own climatology for correlation calculation
         print(f"Computing correlation between {variable1_name} and {variable2_name} at level {variable1_level} and {variable2_level} ...", end=" ")
         corr = xr.corr(data[variable1_name], data[variable2_name], dim='time')
         print("Done.")
-
-        # If era5_base is True, use ERA5 climatology as a base for correlation calculation
-        if era5_base and era5 is not None:
-            # select only base period for ERA5
-            era5 = era5.sel(time=slice(f"{self.base_period[0]}-01-01", f"{self.base_period[1]}-12-31"))
-            era5 = era5.fillna(value=era5.mean(dim=["latitude", "longitude"], skipna=True))
-            
-            # compute correlation
-            print(f"Computing correlation between {variable1_name} and {variable2_name} at level {variable1_level} and {variable2_level} for ERA5 ...", end=" ")    
-            era5_corr = xr.corr(era5[variable1_name], era5[variable2_name], dim='time')
-            print("Done.")
         
-        if plot:
-            output_path = f"{self.output_path}/correlation/plots"
-            os.makedirs(output_path, exist_ok=True)
-            # plot the correlation
-            fname = f"correlation_{variable1_name}_{variable2_name}"
-            title = f"{variable1_name} and {variable2_name} at level {variable1_level} and {variable2_level}"
-            plot_variable(corr.compute(), fname=fname, output_path=output_path, title=title, cbar_label="Correlation", cmap=colormap)
-            if era5_base:
-                fname = f"correlation_{variable1_name}_{variable2_name}_era5"
-                title = f"{variable1_name} and {variable2_name} (ERA5 {self.base_period[0]}-{self.base_period[1]})"
-                plot_variable(era5_corr.compute(), fname=fname, output_path=output_path, title=title, cbar_label="Correlation", cmap=colormap)
+        output_path = f"{self.output_path}/correlation/plots"
+        os.makedirs(output_path, exist_ok=True)
+        # plot the correlation
+        fname = f"{ref}correlation_{variable1_name}_{variable2_name}"
 
+        if ref != '':
+            title_prefix = f"ERA5 "
+        else:
+            title_prefix = ''
 
-        return corr
+        # Get variable short names
+        var1_short = self.get_variable_short_name(variable1_name, variable1_level)
+        var2_short = self.get_variable_short_name(variable2_name, variable2_level)
+        title = f"{title_prefix}{var1_short} and {var2_short}"
+        plot_variable(corr.compute(), fname=fname, output_path=output_path, title=title, cbar_label="Correlation", cmap=colormap)
+
+        if against_reference and self.reference is not None:
+            self.correlation(
+                data=self.reference, 
+                variable1=variable1, 
+                variable2=variable2, 
+                against_reference=False, 
+                colormap=colormap,
+                ref='era5_'
+            )
     
     def avg_temperature_map(self, level):
         """
@@ -606,33 +866,65 @@ class ClimateEvaluator:
             geopotential = self.data['geopotential'].sel(level=level, time=self.data.time.dt.month == month).mean(dim='time')
 
             plot_temperature_with_geopotential_contours(temp, geopotential, level, output_path, f"2m Temperature with Geopotential Heights at {level}hpa{month:02d}")
-
-    def latitude_time_plot(self, variable, level=None):
+  
+    @evaluate_ensemble
+    def latitude_time_plot(self, data, against_reference=False, ref_label="", **kwargs):
         """
         Plot a latitude-time plot for a given variable.
         
         :param variable: Variable to plot.
         :param level: Level to plot (optional).
         """
-        output_path = f"{self.output_path}/latitude_time_plots"
+        output_path = f"{self.output_path}/climeval/latitude_time_plots"
         os.makedirs(output_path, exist_ok=True)
 
-        if level is not None:
-            data = self.data[variable].sel(level=level)
-        else:
-            data = self.data[variable]
+        print('Select data from time period ... ', end='')
+        if 'time_period' in kwargs.keys():
+            data = data.sel(time=slice(kwargs['time_period'][0], kwargs['time_period'][1]))
+        print('Done')
+        
+        # Mask sea variables
+        if ref_label == "":
+            data['sea_surface_temperature'] = xr.where(self.land_sea_mask > 0.5, np.nan, data['sea_surface_temperature'])
+        
+        print('Interpolate missing latitudes ... ', end='')
+        lat = data.latitude.to_numpy()
+        data['latitude'] = lat[::-1]  # to interpolate, lat has to be monotonically increasing
+        data = data.interpolate_na(dim='longitude', method='linear', fill_value="extrapolate").ffill(dim='latitude')
+        data['latitude'] = lat  # restore original latitudes
+        print('Done')
 
-        # Create latitude-time plot
-        plt.figure(figsize=(15, 5), dpi=150)
-        data.plot(x='time', y='latitude', cmap='viridis')
-        plt.title(f"Latitude-Time Plot of {variable} at Level {level}" if level else f"Latitude-Time Plot of {variable}")
-        plt.xlabel('Time')
-        plt.ylabel('Latitude')
-        plt.colorbar(label=variable)
-        plt.tight_layout()
-        plt.savefig(f"{output_path}/{variable}_latitude_time_plot.png")
+        print('Compute mean over time and longitude ... ', end='')
+        data = compute_mean(data, reduce_dims=['time', 'longitude'], groupby=['time.year', 'time.month'])
+        data = data.stack(time=['year', 'month'])
+        print('Done')
 
-    def anomaly_over_years(self, variable, level=None, plot=True):
+
+        for var, lvl in self.variables:
+            var_name = surface_variables_short[var] if var in surface_variables_short.keys() else level_variables_short[var] + str(lvl) 
+
+            print(f"Plot {var_name} ... ", end='')
+            plt.figure(figsize=(10, 6), dpi=300)
+            plt.rcParams.update({'font.size': 12})
+            plt.imshow(data.sel(level=lvl)[var], aspect="auto", interpolation='bilinear', cmap='coolwarm')
+            plt.yticks(ticks=np.arange(0, data.latitude.size, 10), labels=data.latitude.values[::10].round(2))
+            plt.xticks(ticks=np.arange(0, data.time.size, 12), labels=[f"{y}" for y in range(data['year'].values[0], data['year'].values[-1]+1)], rotation=90)
+            plt.colorbar(label=self.units[var], orientation='vertical', pad=0.05, extend='both', shrink=0.9)
+            plt.title(f'{var_name}')
+            plt.xlabel('Time')
+            plt.ylabel('Latitude')
+            plt.savefig(f"{output_path}/{ref_label}_latitude_time_{var_name}.png", bbox_inches='tight')
+            plt.close()
+
+            print('Done')
+
+        if against_reference and self.reference is not None:
+            print('\n####### REFERENCE DATA #######\n')
+
+            self.latitude_time_plot(data=self.reference, against_reference=False, ref_label="era5", **kwargs)
+
+    @evaluate_ensemble
+    def annual_anomalies(self, data, against_reference=True, plot=True):
         """
         Plot anomalies of a variable against time.
         
@@ -640,45 +932,47 @@ class ClimateEvaluator:
         :param level: Level to plot (optional).
         :param plot: Whether to plot the anomalies.
         """
-        output_path = f"{self.output_path}/anomalies_against_time"
+        output_path = f"{self.output_path}/annual_anomalies/plots"
         os.makedirs(output_path, exist_ok=True)
 
-        if level is not None:
-            data = self.data[variable].sel(level=level)
-            era5 = self.era5[variable].sel(level=level) 
+        anomaly = eval_timeseries.compute_annual_anomaly(
+            data, True, self.base_period)
+        
+        if against_reference:
+            ref_anomaly = eval_timeseries.compute_annual_anomaly(
+                self.reference, True, self.base_period)
         else:
-            data = self.data[variable]
-            era5 = self.era5[variable]
+            ref_anomaly = None
 
-        # Calculate monthly anomalies over years
-        monthly_mean = era5.groupby('time.month').mean(['time', 'latitude', 'longitude'])
-        anomalies = data.groupby(['time.year', 'time.month']).mean(['time', 'latitude', 'longitude']) - monthly_mean
-        anomalies = anomalies.mean(dim="month")
-        anomalies = anomalies.rename(year='time')
-        anomalies = anomalies.reset_index('time')
 
-        if plot:
-            plt.figure(figsize=(15, 5), dpi=150)
-            plt.plot(anomalies.compute(), label='Model Anomalies', color='blue', linewidth=2)
-            plt.title(f"Anomalies of {variable} at Level {level}" if level else f"Anomalies of {variable}")
-            plt.xlabel('Time')
-            plt.ylabel('Anomaly')
-            plt.grid()
-            plt.tight_layout()
-            plt.savefig(f"{output_path}/{variable}_anomalies.png")
+        if plot:    
+            xticks = np.arange(0, anomaly.time.size)
+            xtick_labels = [f"{y}-{m:2d}" for (y, m) in anomaly.time.values]
+            mult = get_xlabel_multiplier(len(xtick_labels))
+            for var, lvl in self.variables:
+                var_name = surface_variables_short[var] if var in surface_variables_short.keys() else level_variables_short[var] + str(lvl) 
+                plot_timeseries(
+                    x=anomaly[var], 
+                    ref=ref_anomaly[var] if against_reference else None,
+                    var=var_name,
+                    xticks=[xticks[::mult], xtick_labels[::mult]],
+                    xlabel='Time',
+                    ylabel=f'Anomaly [{self.units[var]}]',
+                    title=f'Yearly Anomalies of {var_name}',
+                    output_path=os.path.join(output_path, f'annual_anomalies_{var_name}.png')
+                )
 
-        return anomalies
-    
-    def variability_kde_timeseries(
-        self,
-        variable="temperature",
-        level=850,                 # use None/null for surface variables
-        label_model="ArchesWeather",
-        plot_era5=True,
-        bandwidth="scott",
-        output_fname="variability_kde_timeseries",
-        detrend=False,
-    ):
+    """def variability_kde_timeseries(
+            self,
+            variable="temperature",
+            level=850,                 # use None/null for surface variables
+            label_model="ArchesWeather",
+            plot_era5=True,
+            bandwidth="scott",
+            output_fname="variability_kde_timeseries",
+            detrend=False,
+        ):
+   
         kde_variability_plot(
             data=self.data,
             era5=self.era5 if plot_era5 else None,
@@ -692,15 +986,99 @@ class ClimateEvaluator:
             output_fname=output_fname,
             detrend=detrend,
         )
+    """
+    @evaluate_ensemble
+    def radial_spectrum(self, data, groupby=['time.year', 'time.month'], projection_years=[2020], ref_year=2020, against_reference=False, **kwargs):
+        """
+        Compute the radial spectrum of the given data.
+        """
 
-    def evaluate(self):
+
+        # Check if reference data is available
+        if against_reference:
+            print("Load reference data and compute reduction ... ", end="")
+            
+            reference = self.select_reference_data(data)
+            reference = reference.fillna(value=reference.mean(dim=["latitude", "longitude"], skipna=True))
+            reference = reference.sel(time=reference.time.dt.year.isin([ref_year]))
+            reference = reference.compute()
+
+            print("Done")
+        else:
+            print("No reference data provided. Skipping reference comparison.")
+            reference = None
+
+        print("Load data and compute reduction ... ", end="")
+
+        data = data.fillna(value=data.mean(dim=["longitude"], skipna=True)).ffill(dim="latitude").bfill(dim="latitude")
+        data = data.sel(time=data.time.dt.year.isin([ref_year]))
+        data = data.compute()
+
+        print("Done")
+
+        output_path = self.output_path + "/climeval" + "/radial_spectrum" + "/plots"
+        os.makedirs(output_path, exist_ok=True)
+
+        def _get_var_spectrum(data, var, level=None):
+            if data is None:
+                return None
+            
+            x = data.sel(level=level)[var].to_numpy()
+            spec = np.stack([compute_radial_spectrum(x=xi) for xi in x], axis=0)
+            spec = np.mean(spec, axis=0) 
+            
+            return spec
+
+        for var, lvl in self.variables:
+            var_name = surface_variables_short[var] if var in surface_variables_short.keys() else level_variables_short[var] + str(lvl)
+            print(f"{var_name} ... ", end="")
+            print("Compute ... ", end="")
+            ref_spec = _get_var_spectrum(reference, var, level=lvl)
+            spec = _get_var_spectrum(data, var, level=lvl)                         
+            print("Plot ... ", end="")
+            plot_radial_spectrum(spec, var_name, output_path=output_path + f"/radial_spectrum_{var_name}_{ref_year}.png", ref_spec=ref_spec)
+            print("Done")
+
+    def iter_variables(self, fnc, data, reference=None, stddev=None, variables=None, **kwargs):
+        """
+        Iterate over the variables and levels specified in the configuration
+        or over a provided list of variables and levels, applying the given function
+        to each variable-level pair. 
+        
+        :return: None
+        """
+        if variables is not None:
+            vars_to_process = variables
+        else:
+            vars_to_process = self.variables
+
+        for var, lvl in vars_to_process:
+            var_name = self.get_variable_short_name(var, lvl)
+            print(f"Processing {var_name} ...")
+            fnc(data, var_name=var_name, reference=reference, stddev=stddev, **kwargs)
+
+
+    def evaluate(self, **kwargs):
         """
         Evaluate the climate data.
         
-        return: Evaluation results.
+        :return: Evaluation results.
         """
         # Placeholder for evaluation logic
-        return {"status": "Evaluation complete", "data": self.data}
+        
+        for k, v in kwargs.items():
+            if hasattr(self, k):
+                method = getattr(self, k)
+                if callable(method):
+                    print(f"\nEvaluating {k}\n---------------------------\n")
+                    
+                    v = OmegaConf.to_container(v)
+                    method(data=self.data, **v)
+                    print(f"\n---------------------------\n")
+                else:
+                    print(f"{k} is not callable.")
+            else:
+                print(f"{k} is not a valid method of ClimateEvaluator.")
     
 
 
@@ -715,16 +1093,7 @@ def main(cfg):
 
     # Load the data
     evaluator = ClimateEvaluator(**cfg['evaluator'])
-
-    for method, params in cfg.evaluate.items():
-        getattr(evaluator, method)(**params)
-
-    # Perform evaluation
-    #results = evaluator.evaluate()
-
-    # Print results
-    
-    #print("Evaluation Results:", results)
+    evaluator.evaluate(**cfg['evaluate'])
 
 if __name__ == "__main__":
 
