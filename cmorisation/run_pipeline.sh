@@ -5,7 +5,7 @@
 #SBATCH --account=bk1450
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=96G
+#SBATCH --mem-per-cpu=24G
 #SBATCH --output=slurm_%x_%j.out
 #SBATCH --error=slurm_%x_%j.err
 
@@ -18,11 +18,13 @@ MODEL_TAG="AW-M-1-aimip-stats-forcings_surface" # part of folder path of input d
 NAME="ArchesWeather"
 ENSEMBLE="r0i1p1f1"
 TAG="AW-M-1-aimip-stats-forcings_surface_aimip_${ENSEMBLE}_gn" # part of the input filename
-INPUT_DIR="/home/b/b383170/repositories/scripts/evalstore/AW-M-1-aimip-stats-forcings_surface/1980-01-01T12:00/daily/member_00/data"
+INPUT_DIR="/home/a/a270220/projects/pcmdi_metrics/land_sea_mask_calculations/to_be_cmorised"
+# "/work/bk1450/a270220/evalstore/AW-M-1-aimip-stats-forcings_surface/1980-01-01T12:00_2018-12-31T12:00/daily/member_0"
 TIMESPAN="1980-2018" # timespan of your input files
 ZG_TO_500="true" # decide if zg (geopotential height) shall be reduced to only contain 500hPa
 
-export RUN_DIR="/work/bk1450/a270220/cmorised_awm/${MODEL_TAG}"
+export RUN_DIR="/home/a/a270220/projects/pcmdi_metrics/land_sea_mask_calculations/${MODEL_TAG}"
+# "/work/bk1450/a270220/cmorised_awm/${MODEL_TAG}"
 mkdir -p "${RUN_DIR}/logs" \
          "${RUN_DIR}/1_means/daily_means" \
          "${RUN_DIR}/1_means/monthly_means" \

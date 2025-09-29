@@ -78,7 +78,7 @@ class CmoriseStep(Step):
         out_base       = cfg['output_root']
         freq_map   = {'monthly': 'Amon', 'daily': 'day'}
         frequency = {'monthly': 'mon', 'daily': 'day'} 
-        zg_to_500      = self.full_cfg["rename_vars"].get('zg_to_500', False)
+        zg_to_500      = cfg.get('zg_to_500', False)
 
         # generate tracking id (cmip convention)
         tracking_id = str(uuid.uuid4())
