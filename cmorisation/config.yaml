@@ -49,6 +49,7 @@ cmorise:
   model: "${NAME}" # ArchesWeatherGen or ArchesWeather-M
   ensemble: "${ENSEMBLE}"    
   output_root: "${general.work_dir}/4_cmorisation"
+  zg_to_500: ${ZG_TO_500}
   global_attributes:
     Conventions: "CF-1.7 CMIP-6.2"
     activity_id: "AIMIP"
