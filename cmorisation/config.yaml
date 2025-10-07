@@ -24,6 +24,7 @@ rename_vars:
     10m_v_component_of_wind: vas
     total_precipitation_6hr: pr
     mean_sea_level_pressure: psl
+    land_sea_mask: sftlf
     # vertical_velocity is not used atm, as it is not required for aimip
 
   unit_mapping:
