@@ -6,7 +6,7 @@ GREEN = "✅"
 RED = "❌"
 WARN = "⚠️"
 
-def setup_logger(log_dir, level="INFO"):
+def setup_logger(log_dir, level="DEBUG"):
     """
     Sets up a named logger 'cmor' that writes to logs/pipeline.log.
     If already set up, returns the existing logger.

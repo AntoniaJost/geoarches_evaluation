@@ -13,7 +13,7 @@ def add_lat_lon_bounds(ds):
     """
     if 'lat_bnds' not in ds and 'lat' in ds:
         lat = ds['lat'].values
-        lat_bnds = _infer_bounds(lat)
+        lat_bnds = _infer_bounds(lat, is_lon=False)
         ds['lat_bnds'] = (('lat', 'bnds'), lat_bnds)
         ds['lat'].attrs.update({
             "bounds": "lat_bnds",
@@ -24,7 +24,7 @@ def add_lat_lon_bounds(ds):
 
     if 'lon_bnds' not in ds and 'lon' in ds:
         lon = ds['lon'].values
-        lon_bnds = _infer_bounds(lon)
+        lon_bnds = _infer_bounds(lon, is_lon=True)
         ds['lon_bnds'] = (('lon', 'bnds'), lon_bnds)
         ds['lon'].attrs.update({
             "bounds": "lon_bnds",
@@ -124,12 +124,44 @@ def inject_height_if_needed(ds, var):
         })
     return ds
 
-def _infer_bounds(values):
+def _infer_bounds(values, is_lon=False):
     """
-    ingers bounds (for lat/lon) by computing midpoints
+    infers bounds (for lat/lon) by computing midpoints
     assumes regularly spaced coordinates
+    handles wrap-around for longitude if is_lon=True
     """
-    step = np.diff(values)
-    lower = values - step[0]/2
-    upper = values + step[0]/2
-    return np.stack([lower, upper], axis=1)
+    logger.debug(f"\n[_infer_bounds] called for {'lon' if is_lon else 'lat'}")
+    logger.debug(f"values[:10] = {values[:10]} ... total={len(values)}")
+
+    # step = np.diff(values)
+    # d = step[0]
+    values = np.asarray(values)
+    d = np.median(np.diff(values))
+    logger.debug(f"d = {d}")
+    
+    lower = values - d/2
+    upper = values + d/2
+    logger.debug(f"lower[:5] (before wrap) = {lower[:5]}")
+    logger.debug(f"upper[:5] (before wrap) = {upper[:5]}")
+
+    if is_lon:
+        # Wrap into [0, 360)
+        lower = (lower + 360) % 360
+        upper = (upper + 360) % 360
+        logger.debug(f"lower[:5] (after wrap) = {lower[:5]}")
+        logger.debug(f"upper[:5] (after wrap) = {upper[:5]}")
+
+        # Special case: first cell should connect to last
+        lower[0] = values[0] - d/2   # may be negative, e.g. -0.5
+        upper[0] = values[0] + d/2   # small positive, e.g. 0.5
+        logger.debug(f"lower[0] fixed = {lower[0]}")
+        logger.debug(f"upper[-1] fixed = {upper[-1]}")
+            # --- Fix last cell to end before 360° ---
+        lower[-1] = values[-1] - d/2
+        upper[-1] = values[-1] + d/2  # should be just below 360
+
+    bounds = np.stack([lower, upper], axis=1)
+    logger.debug(f"bounds[:5] = \n{bounds[:5]}")
+    logger.debug(f"bounds[-5:] = \n{bounds[-5:]}")
+
+    return bounds
