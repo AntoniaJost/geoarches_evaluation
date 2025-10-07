@@ -93,3 +93,11 @@ zg:
   units: "m"
   cell_methods: "time: mean"
   cell_measures: "area: areacella"
+
+sftlf:
+  standard_name: land_area_fraction
+  long_name: Land Area Fraction
+  units: '%'
+  original_units: '1'
+  cell_measures: 'area: areacella'
+  history: "altered by CMOR: Converted units from '1' to '%'; replaced missing value flag (NaN) with standard missing value (1e20)"
