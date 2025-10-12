@@ -60,6 +60,8 @@ def plot_timeseries(x, xticks=None, title='', xlabel='', ylabel='', output_path=
         ax.fill_between(range(len(x)), x - std, x + std, color='gray', alpha=0.2)
     elif fill == 'positive_negative':
         _fill_positive_negative(ax, x)
+    else:
+        pass
 
     if add_data_trend:
         # Add a linear trend line
@@ -99,46 +101,6 @@ def plot_timeseries(x, xticks=None, title='', xlabel='', ylabel='', output_path=
 
     plt.tight_layout()
     plt.savefig(output_path)
-
-
-"""def plot_enso_index(enso_data, time, output_path, enso_type='Nino34', ref=''):
-    # function that plots the ENSO 3.4 index (ENSO34) or soi data
-    # values larger than 0 are red and values smaller than 0 are blue
-    
-    time = list(set(time.astype('datetime64[M]').to_numpy()))  # Ensure time is in datetime format
-    time.sort()
-    time_ids = list(range(0, len(time)))
-
-    plt.figure(figsize=(15, 5), dpi=150)
-    plt.rcParams.update(fontdict)
-
-    plt.plot(time_ids, enso_data, label=f"ENSO Index: {enso_type}", color='black', linewidth=0.7)
-
-    # Highlight positive and negative values
-    positive = enso_data.where(enso_data > 0, drop=False)
-    negative = enso_data.where(enso_data < 0, drop=False)
-    pos_ids = (enso_data > 0).to_numpy().astype(np.int32).tolist()
-    neg_ids = (enso_data < 0).to_numpy().astype(np.int32).tolist()
-    pos_ids = [time_ids[i] for i, pidx in enumerate(pos_ids) if pidx == 1]
-    neg_ids = [time_ids[i] for i, nidx in enumerate(neg_ids) if nidx == 1]
-
-    plt.fill_between(time_ids, 0, positive, color='orange')
-    plt.fill_between(time_ids, 0, negative, color='paleturquoise')
-
-    plt.axhline(0, color='black', linestyle='--', linewidth=0.5)
-
-    years = list(set([t.astype('datetime64[Y]') for t in time]))
-    years.sort()
-
-
-    mult = get_xlabel_multiplier(len(years))
-    plt.xticks(ticks=list(range(0, len(time), mult * 12)), labels=years[::mult], rotation=45, ha='right')
-    plt.xlabel('Time')
-    plt.ylabel('°C' if enso_type == 'Nino34' else 'SOI')
-    plt.grid()
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(f'{output_path}/{ref}{enso_type}_plot.png')"""
 
 
 def plot_annual_oscillation(time, data, output_path, variable_name, add_linear_trend=True, ref=None, std=None):

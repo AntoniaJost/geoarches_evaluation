@@ -4,10 +4,10 @@ import xarray as xr
 from metrics import utils as eval_utils
 import pandas as pd
 
-def compute_annual_cycle(data, detrend, base_period):
+def compute_annual_cycle(data, detrend=False, remove_annual_cycle=False, base_period=None):
         if detrend:
             data = eval_utils.detrend_data(data, base_period=base_period, variables_to_detrend=['sea_surface_temperature', '2m_temperature'])
-
+        
         data = eval_utils.compute_mean(data, groupby=['time.year', 'time.month'], reduce_dims=['time', 'latitude', 'longitude'])
         data = data.stack(time=('year', 'month')).transpose('time', ...)
         
@@ -83,7 +83,7 @@ def compute_oni_index(data, base_period, detrend=False):
         data = eval_utils.detrend_data(data, base_period=base_period, variables_to_detrend=['sea_surface_temperature'])
 
     data = data['sea_surface_temperature']
-    
+
     # Standard deviation
     std_dev = eval_utils.compute_std_dev(
         data=data, 
@@ -108,13 +108,11 @@ def compute_oni_index(data, base_period, detrend=False):
 
     # Select the region for the ENSO 3.4 index
     enso34 = enso34.sel(latitude=slice(5, -5), longitude=slice(10, 60))
-    enso34 = enso34.mean(dim=['latitude', 'longitude'])
+
+    enso34 = enso34.mean(dim=['latitude', 'longitude'], skipna=True)
     enso34 = enso34.stack(time=('year', 'month'), create_index=True).transpose('time', ...)
     enso34['time'] = np.unique(data['time'].astype('datetime64[M]').to_numpy())
-    
-    # Apply running average if specified
-    #enso34 = enso34.rolling(time=3, center=True)
-    #enso34 = enso34.mean()
+
     anomalies = anomalies / std_dev
     anomalies = anomalies.stack(time=('year', 'month'), create_index=True).transpose('time', ...)
     anomalies['time'] = np.unique(data['time'].astype('datetime64[M]').to_numpy())
