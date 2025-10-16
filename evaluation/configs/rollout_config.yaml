@@ -1,7 +1,8 @@
 model_name: "AW-M-0-aimip-stats-forcings_surface-interpolgt"  # the name of the model under modelstore/
 start_timestamp: "1980-01-01T12:00"
 end_timestamp: "2039-12-31T12:00"
-avg_with_modules: ["AW-M-0-aimip-stats-forcings_surface-interpolgt"] 
+avg_with_modules: Null 
+#["AW-M-0-aimip-stats-forcings_surface-interpolgt"] 
 
 aimip:
   # Options: "modules.deterministic.DeterministicAAIMIPRollout", "modules.generative.GenerativeAAIMIPRollout"

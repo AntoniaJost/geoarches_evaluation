@@ -1,11 +1,19 @@
-model_name: "AW-M-1-aimip-w_forcings-woSST_SIC" #"archesgen-m-gc-sst_sic-weight_01" 
+model_name: "AW-M-1-aimip-w_forcings-woSST_SIC"
 type: "daily"
 period: "1980-01-01T12:00"
 member: "member_01"
 sst_scenario: '0' # either '0', '2' or '4' indicating the sst scenario
+eval_metrics: 
+  bias_map: True
+  annual_cycle: True
+  latitude_time_plot: True
+  radial_spectrum: True
+  oceanic_nino_index: False
+  indian_monsoon_index: False
+
 evaluator: 
   #path: ["evalstore/${model_name}/${period}/${type}/member_0", "evalstore/${model_name}/${period}/${type}/member_1", "evalstore/${model_name}/${period}/${type}/member_2"]
-  model_label: "AW-M-1-aimip-w_forcings-woSST_SIC"
+  model_label: "AWM-1-igt-woSST_SIC-0k"
   reference_dimension_names:
     latitude: latitude
     longitude: longitude
@@ -32,6 +40,9 @@ evaluator:
   end_stamp: "1999-12-31T12:00"
 
 evaluate:
+  bias_map:
+    year: 1999
+    
   #annual_anomalies:
   #  plot: True
   #  against_reference: True
@@ -53,11 +64,11 @@ evaluate:
     against_reference: True
     ref_year: 1999
 
-  #oceanic_nino_index: 
-  #  power_spectrum: True
-  # regression_analysis: False
-  #  against_reference: True
-  #  period: ["1980-01-01T12:00", "1999-12-31T12:00"]
+  oceanic_nino_index: 
+    power_spectrum: True
+    regression_analysis: False
+    against_reference: True
+    period: ["1980-01-01T12:00", "1999-12-31T12:00"]
 
   indian_monsoon_index:
     against_reference: True

@@ -329,6 +329,15 @@ class AAIMIPRollout:
     def dump_to_netcdf(self, output, timestamp):
         # Concat list of xarrays along time dimension
 
+        #if 'sea_surface_temperature' in self.dataset.variables['surface']:
+        #    # Replace land grid points with nans where lsm == 1
+        #    sst_index = self.dataset.variables['surface'].index('sea_surface_temperature')
+        #    for i in range(len(output)):
+        #        sst = output[i]['surface'][:, sst_index, ...]
+        #        sst[:, :, self.land_sea_mask == 1] = torch.tensor(np.nan, dtype=sst.dtype).cuda()
+        #        output[i]['surface'][:, sst_index, ...] = sst
+
+
         xarrays = [self.dataset.convert_to_xarray(
             self.dataset.denormalize(o), 
             timestamp + self.lead_time_hours * 3600 * i, 

@@ -5,6 +5,7 @@ import warnings
 
 from itertools import product
 
+from matplotlib import colors
 import numpy as np
 import xarray as xr
 
@@ -70,6 +71,195 @@ def evaluate_ensemble(fnc):
     return eval_ensemble
 
 
+'''class ClimateEvaluator:
+    """
+    A class to evaluate climate data.
+    """
+
+    R = 6.371e6  # Radius of the Earth in meters
+    g = 9.81     # Acceleration due to gravity in m/s^2
+    pi = 3.14159
+    units = {
+        'sea_surface_temperature': '[K]',
+        '2m_temperature': '[K]',
+        'mean_sea_level_pressure': '[Pa]',
+        'specific_humidity': '[kg/kg]',
+        'geopotential': '[m^2/s^2]',
+        'u_component_of_wind': '[m/s]',
+        'v_component_of_wind': '[m/s]',
+        '10m_u_component_of_wind': '[m/s]',
+        '10m_v_component_of_wind': '[m/s]',
+        'sea_ice_cover': '[fraction]',
+        'temperature': '[K]',
+        'vertical_velocity': '[m/s]',
+
+    }
+
+
+    def __init__(self, file_path, variables, levels, dimension_indexers, filename_filter=None):
+        """
+        Initialize the ClimateEvaluator with data.
+        args:
+        :param file_path: Path to the netcdf files.
+        :param model_label: Label for the dataset (e.g., model name).
+        :param variables: List of variables to load.
+        :param levels: List of levels to load (for level variables).
+        :param dimension_indexers: Dictionary mapping standard dimension names to dataset-specific names.
+        :param filename_filter: Optional string to filter filenames.
+        """
+
+        self.variables = variables
+        self.levels = levels
+        self.dimension_indexers = dimension_indexers
+
+        # Load dataset and select only the required levels and variables
+        file_paths = sorted(glob.glob(file_path, '*.nc'))
+
+        if filename_filter is not None:
+            file_paths = [f for f in file_paths if filename_filter in f]
+
+        self.data = xr.open_mfdataset(
+            paths=file_paths, 
+            combine="by_coords", 
+            preprocess=self.preprocess
+        )
+
+        # Ensure dimensions are in the order time, level, latitude, longitude
+        self.data = self.data.transpose('time', 'level', 'latitude', 'longitude')
+
+        if self.data.latitude[0] < self.data.latitude[-1]:  # if latitude is descending
+            self.data['latitude'] = self.data.latitude[::-1]
+
+        self.data = self.data.roll(longitude=-len(self.data.longitude) // 2, roll_coords=False)
+
+    def preprocess(self, dataset):
+        dataset = dataset.sel({self.dimension_indexers['level']: self.levels})
+        dataset = dataset[self.variables]
+        dataset = dataset.rename({v: k for k, v in self.dimension_indexers.items()})
+
+        return dataset
+
+    
+    def annual_cycle(self, detrend=False):
+
+        annual_cycle = eval_timeseries.compute_annual_cycle(self.data, detrend, self.base_period)
+        return annual_cycle
+    
+    def latitude_time_plot(self, period=None):
+        """
+        Plot a latitude-time plot for a given variable.
+        
+        :param variable: Variable to plot.
+        :param level: Level to plot (optional).
+        """
+
+        print('Select data from time period ... ', end='')
+        if period is not None:
+            data = data.sel(time=slice(period[0], period[1]))
+        print('Done')
+        
+        print('Interpolate missing latitudes ... ', end='')
+        lat = data.latitude.to_numpy()
+        data['latitude'] = lat[::-1]  # to interpolate, lat has to be monotonically increasing
+        data = data.interpolate_na(dim='longitude', method='linear', fill_value="extrapolate").ffill(dim='latitude')
+        data['latitude'] = lat  # restore original latitudes
+        print('Done')
+
+        print('Compute mean over time and longitude ... ', end='')
+        data = compute_mean(data, reduce_dims=['time', 'longitude'], groupby=['time.year', 'time.month'])
+        data = data.stack(time=['year', 'month'])
+        
+        return data
+    
+    def oceanic_nino_index(self, period=None, detrend=False, power_spectrum=False, regression_analysis=False):
+        assert 'sea_surface_temperature' in list(self.data.data_vars.keys()), \
+            "Missing sea_surface_temperature variable"
+        
+        if period:
+            data = self.data.sel(time=slice(period[0], period[1]))
+        else:
+            data = self.data
+
+        print(f"Compute Oceanic Nino Index for period {period} ... ", end='')
+
+        nino34, sst = eval_timeseries.compute_oni_index(
+            data=data, 
+            base_period=self.base_period, 
+            detrend=detrend
+        )
+
+        print('Done')
+
+        # make time multindex normal index
+        nino34 = nino34.reset_index('time')
+        sst = sst.reset_index('time')
+
+        print(nino34.values)
+
+        if power_spectrum:
+            print("Compute power spectrum ... ", end='')
+            np_nino34 = nino34.to_numpy()
+
+            spec_tuple = welch_psd(np_nino34)  # frequency, power_spectrum
+            print('Done')
+        else:
+            spec_tuple = None
+
+        if regression_analysis:
+            regression_map = self.regression_analysis(sst, nino34)
+        else:
+            regression_map = None
+        
+        return nino34, spec_tuple, regression_map 
+
+    def _get_var_spectrum(data, var, level=None):
+        if data is None:
+            return None
+        
+        x = data.sel(level=level)[var].to_numpy()
+        spec = np.stack([compute_radial_spectrum(x=xi) for xi in x], axis=0)
+        spec = np.mean(spec, axis=0) 
+        
+        return spec
+    
+    def radial_spectrum(self, data, groupby=['time.year', 'time.month'], projection_years=[2020], ref_year=2020, against_reference=False, **kwargs):
+        """
+        Compute the radial spectrum of the given data.
+        """
+
+
+        # Check if reference data is available
+        if against_reference:
+            print("Load reference data and compute reduction ... ", end="")
+            
+            reference = self.select_reference_data(data)
+            reference = reference.fillna(value=reference.mean(dim=["latitude", "longitude"], skipna=True))
+            reference = reference.sel(time=reference.time.dt.year.isin([ref_year]))
+            reference = reference.compute()
+
+            print("Done")
+        else:
+            print("No reference data provided. Skipping reference comparison.")
+            reference = None
+
+        print("Load data and compute reduction ... ", end="")
+
+        data = data.fillna(value=data.mean(dim=["longitude"], skipna=True)).ffill(dim="latitude").bfill(dim="latitude")
+        data = data.sel(time=data.time.dt.year.isin([ref_year]))
+
+        vars = [(v, None) for v in self.variables['surface']]
+        vars.extend(product(self.variables['level'], self.levels))
+
+        spectra = {}
+        for var, lvl in vars:
+            
+            spec = self._get_var_spectrum(data, var, lvl)
+            var_name = surface_variables_short[var] if var in surface_variables_short.keys() else level_variables_short[var] + str(lvl)
+            spectra[var_name] = spec
+            
+        # Store spectra on disk as netcdf
+    #   path = f"{self.output_path}/climeval/radial_spectrum" 
+'''
 
 class ClimateEvaluator:
     """
@@ -93,6 +283,8 @@ class ClimateEvaluator:
         'vertical_velocity': '[m/s]',
 
     }
+
+
 
     short_names = {**surface_variables_short, **level_variables_short}
 
@@ -177,11 +369,7 @@ class ClimateEvaluator:
             self.reference = self.reference.roll(longitude=-len(self.reference.longitude) // 2, roll_coords=False)  # Roll longitude to match data
             self.land_sea_mask = self.reference['land_sea_mask'].to_numpy()[0]
             self.reference = self.reference[list(self.data.data_vars.keys())]
-            if 'sea_surface_temperature' in self.reference.data_vars:
-                mean = self.reference['sea_surface_temperature'].mean('longitude')
-                self.reference['sea_surface_temperature'] = self.reference['sea_surface_temperature'].fillna(mean).ffill(dim='latitude')
-            if 'sea_ice_cover' in self.reference.data_vars:
-                self.reference['sea_ice_cover'] = self.reference['sea_ice_cover'].fillna(0)
+            
         else:
             self.reference = None
 
@@ -217,6 +405,69 @@ class ClimateEvaluator:
                 reference = detrend_data(reference, self.base_period, ['sea_surface_temperature', '2m_temperature'])
 
             return reference
+
+    def bias_map(self, data, year=2020, season=None, **kwargs):
+
+        print("Compute bias map ... ", end='')
+
+        assert self.reference is not None, "Reference data is required for bias map computation."
+        reference = self.select_reference_data(data)
+
+        if 'sea_surface_temperature' in reference.data_vars:
+                mean = reference['sea_surface_temperature'].mean('longitude')
+                reference['sea_surface_temperature'] = reference['sea_surface_temperature'].fillna(mean).ffill(dim='latitude')
+        if 'sea_ice_cover' in reference.data_vars:
+                reference['sea_ice_cover'] = reference['sea_ice_cover'].fillna(0)
+
+        if season is not None:
+            data = self.select_seasonal_data(year, season)
+        else:
+            data = data.sel(time=data.time.dt.year == year)
+            reference = reference.sel(time=(reference.time >= data.time[0].astype('datetime64[D]')) & (reference.time <= data.time[-1].astype('datetime64[D]')))
+            print(data)
+            print(reference)
+            data = data.mean('time')
+            data['longitude'] = np.linspace(0, 360, len(data.longitude), endpoint=False)
+            reference = reference.mean('time')
+            bias = data - reference
+
+        print('Done')
+
+        # Specify output path
+        path = f"{self.output_path}/climeval/bias_map"
+        os.makedirs(path, exist_ok=True)
+
+        print('Plot bias maps ... ', end='')
+        for var, lvl in self.variables:
+            print(f"Processing {var} at level {lvl} ... ", end='')
+            if var in ['sea_surface_temperature', '2m_temperature']:
+                mask = self.land_sea_mask.astype(bool)
+            else:
+                mask = None
+
+            reference = None  # do not plot reference for bias maps
+
+            x = bias.sel(level=lvl)[var]
+            x = x.to_numpy()
+            print(x.shape)
+            #if var in ['sea_surface_temperature', 'sea_ice_cover']:
+                
+            #    x = np.where(mask == 0, x, np.nan)
+
+            var_name = self.get_variable_short_name(var, lvl)
+            title = f"Bias Map {var_name} {year}" + (f" {season}" if season is not None else '')
+            fname = f"bias_map_{var_name}_{year}" + (f"_{season}" if season is not None else '') + ".png"
+            plot_variable(
+                x=x,
+                fname=fname,
+                output_path=path,
+                title=title,
+                cbar_label=self.units[var],
+                cmap='coolwarm',
+                norm=colors.TwoSlopeNorm(vcenter=0),
+
+            )
+            print('Done')
 
     def monthly_anomalies(self, data, detrend=False, year=2020):
 
@@ -341,8 +592,16 @@ class ClimateEvaluator:
         time = data.time
         time = time.dt.strftime('%Y-%m').values
         unique_time = sorted(list(set(time)))
+        if against_reference and self.reference is not None:
+            if 'sea_surface_temperature' in data.data_vars:
+                data['sea_surface_temperature'] = xr.where(self.land_sea_mask == 0, data['sea_surface_temperature'], np.nan)
+            
+            if 'sea_ice_cover' in data.data_vars:
+                data['sea_ice_cover'] = xr.where(self.land_sea_mask == 0, data['sea_ice_cover'], 0)
+
         annual_cycle = eval_timeseries.compute_annual_cycle(data, detrend, self.base_period)
 
+        
         #annual_cycle.to_netcdf(f"{output_path}/data.nc")
 
         if 'std' in kwargs.keys():  # if ensemble
@@ -701,8 +960,7 @@ class ClimateEvaluator:
                 xlabel=r'Time',
                 ylabel=r'°C',
                 output_path=os.path.join(output_path, f'era5_nino34_timeseries_ref.png'),
-                label='self.model_label', 
-                ref_label='ERA5', 
+                label='ERA5', 
                 fill='positive_negative', 
             )
         print('Done')
@@ -1050,15 +1308,30 @@ class ClimateEvaluator:
             
             return spec
 
+        spectra = {"ref": {}, "model": {}}
         for var, lvl in self.variables:
             var_name = surface_variables_short[var] if var in surface_variables_short.keys() else level_variables_short[var] + str(lvl)
             print(f"{var_name} ... ", end="")
             print("Compute ... ", end="")
             ref_spec = _get_var_spectrum(reference, var, level=lvl)
-            spec = _get_var_spectrum(data, var, level=lvl)                         
+            spec = _get_var_spectrum(data, var, level=lvl)  
+            spectra["ref"][var_name] = ref_spec
+            spectra["model"][var_name] = spec                       
             print("Plot ... ", end="")
             plot_radial_spectrum(spec, var_name, output_path=output_path + f"/radial_spectrum_{var_name}_{ref_year}.png", ref_spec=ref_spec)
             print("Done")
+        
+
+        # Dump spectra to a ref and a model npz file
+        np.savez(
+            os.path.join(output_path, f"model_radial_spectra_{ref_year}.npz"), 
+            **spectra["model"]
+        )
+
+        np.savez(
+            os.path.join(output_path, f"ref_radial_spectra_{ref_year}.npz"), 
+            **spectra["ref"]
+        )
 
     def iter_variables(self, fnc, data, reference=None, stddev=None, variables=None, **kwargs):
         """
@@ -1079,7 +1352,7 @@ class ClimateEvaluator:
             fnc(data, var_name=var_name, reference=reference, stddev=stddev, **kwargs)
 
 
-    def evaluate(self, **kwargs):
+    def evaluate(self, eval_metrics, **kwargs):
         """
         Evaluate the climate data.
         
@@ -1088,19 +1361,27 @@ class ClimateEvaluator:
         # Placeholder for evaluation logic
         
         for k, v in kwargs.items():
-            if hasattr(self, k):
-                method = getattr(self, k)
-                if callable(method):
-                    print(f"\nEvaluating {k}\n---------------------------\n")
-                    
-                    v = OmegaConf.to_container(v)
-                    method(data=self.data, **v)
-                    print(f"\n---------------------------\n")
+            if k not in eval_metrics:
+                print(f"Skipping {k} as it is not in eval_metrics.")
+                continue
+
+            if eval_metrics[k]:
+
+                if hasattr(self, k):
+                    method = getattr(self, k)
+                    if callable(method):
+                        print(f"\nEvaluating {k}\n---------------------------\n")
+                        
+                        v = OmegaConf.to_container(v)
+                        method(data=self.data, **v)
+                        print(f"\n---------------------------\n")
+                    else:
+                        print(f"{k} is not callable.")
                 else:
-                    print(f"{k} is not callable.")
+                    print(f"{k} is not a valid method of ClimateEvaluator.")
             else:
-                print(f"{k} is not a valid method of ClimateEvaluator.")
-    
+                print(f"Skipping {k} as it is set to False in eval_metrics.")
+        
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="eval_config")
@@ -1114,7 +1395,7 @@ def main(cfg):
 
     # Load the data
     evaluator = ClimateEvaluator(**cfg['evaluator'])
-    evaluator.evaluate(**cfg['evaluate'])
+    evaluator.evaluate(eval_metrics=cfg['eval_metrics'], **cfg['evaluate'])
 
 if __name__ == "__main__":
 

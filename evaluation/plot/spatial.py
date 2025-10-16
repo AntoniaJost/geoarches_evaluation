@@ -13,7 +13,7 @@ from cartopy.mpl.ticker import LongitudeFormatter, LatitudeFormatter
 from geoarches.dataloaders.era5 import surface_variables_short, level_variables_short
 
 fontdict = {'font.size': 12}
-def plot_variable(x, fname, output_path, title=None, ax=None, cbar_label=None, cmap='viridis', extent=None, central_longitude=0., global_projection="Robinson", patch_kwargs=None, vmin=None, vmax=None):
+def plot_variable(x, fname, output_path, title=None, ax=None, cbar_label=None, cmap='viridis', extent=None, central_longitude=0., global_projection="Robinson", patch_kwargs=None, vmin=None, vmax=None, norm=None):
     
     # Plot a xarray DataArray with cartopy projection 
     if ax is None:
@@ -45,6 +45,7 @@ def plot_variable(x, fname, output_path, title=None, ax=None, cbar_label=None, c
 
     img = ax.imshow(
         x, transform=ccrs.PlateCarree(central_longitude=central_longitude), cmap=cmap, vmin=vmin, vmax=vmax,
+        norm=norm
     )
 
     if extent:
