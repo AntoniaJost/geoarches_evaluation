@@ -147,7 +147,7 @@ def variability_kde_timeseries(
         f"{lab_var}",
         f"Base period: {base_period[0]}–{base_period[1]}",
         "Detrended" if detrend else "Raw anomalies",
-        f"Kernel: Gaussian",
+        "Kernel: Gaussian",
         f"Bandwidth: {bandwidth}",
     ]
     fig.suptitle(" | ".join(title_parts), fontsize=11)

@@ -1,11 +1,10 @@
 import numpy as np
 import pandas as pd
-import xarray as xr
 
 import torch
 from tensordict import TensorDict
 from modules.base import AAIMIPRollout
-
+from geoarches.lightning_modules.forecast import ForecastModuleWithCond
 
 class DeterministicAAIMIPRollout(AAIMIPRollout):
     def __init__(
@@ -60,19 +59,20 @@ class DeterministicAAIMIPRollout(AAIMIPRollout):
         )
 
     
-    def update_batch(self, pred, loop_batch):
+    def update_batch(self, loop_batch, pred):
         # Update the batch with the model's output
         new_loop_batch = {k: v for k, v in loop_batch.items()}
         new_loop_batch['prev_state'] = loop_batch['state']
         new_loop_batch['state'] = pred
         new_loop_batch['timestamp'] = loop_batch['timestamp'] + self.lead_time_hours * 3600  # increment timestamp by lead time in seconds
+        
         print(
             "Updated timestamp to:", 
             pd.to_datetime(new_loop_batch['timestamp'].detach().cpu(), unit='s').tz_localize(None).strftime('%Y-%m-%d %H:%M:%S')
         )
         
         if "forcings" in loop_batch.keys():
-            new_loop_batch['forcings'] = self.get_forcings(new_loop_batch['timestamp'])
+            new_loop_batch['forcings'] = self.get_forcings(new_loop_batch['timestamp']).unsqueeze(0)
 
         if self.replace_land_grid_from_forcings and self.forcings is not None:
             variables = self.dataset.variables
@@ -170,3 +170,53 @@ class DeterministicAAIMIPRollout(AAIMIPRollout):
         self._rollout(rollout_steps, batch)
 
         print('Done.\n#######################################\n')
+
+
+
+class DeterministicClimateProjector(ForecastModuleWithCond):
+    def __init__(self, dataset, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.dataset = dataset
+
+    def update_batch(self, pred, loop_batch):
+        # Update the batch with the model's output
+        new_loop_batch = {k: v for k, v in loop_batch.items()}
+        new_loop_batch['prev_state'] = loop_batch['state']
+        new_loop_batch['state'] = pred
+        new_loop_batch['timestamp'] = loop_batch['timestamp'] + self.lead_time_hours * 3600  # increment timestamp by lead time in seconds
+        print(
+            "Updated timestamp to:", 
+            pd.to_datetime(new_loop_batch['timestamp'].detach().cpu(), unit='s').tz_localize(None).strftime('%Y-%m-%d %H:%M:%S')
+        )
+        
+        if "forcings" in loop_batch.keys():
+            new_loop_batch['forcings'] = self.get_forcings(new_loop_batch['timestamp'])
+
+        return new_loop_batch
+
+    def simulate(self, batch: TensorDict, target_date: str) -> TensorDict:
+        """Simulate the next state given the current batch."""
+        # Directly use the model's forward method for deterministic simulation
+
+        current_date = pd.to_datetime(batch['timestamp'].detach().cpu(), unit='s').tz_localize(None)
+        target_date = pd.to_datetime(target_date).tz_localize(None)
+
+        predictions = []
+        predictions.append(batch['state'])
+        while (current_date != target_date):
+            next_state = self.forward(batch)
+            predictions.append(next_state)
+
+            batch = self.update_batch(next_state, batch)
+            current_date = pd.to_datetime(batch['timestamp'].detach().cpu(), unit='s').tz_localize(None)
+
+            if current_date.month == 12 and current_date.day == 31:
+                print("Reached end of year:", current_date.strftime('%Y-%m-%d %H:%M:%S'))
+                xr_datasets = [self.dataset.convert_to_xarray(p) for p in predictions]
+                #xr_datasets = xr.concat(xr_datasets, dim='time')
+                self.dump_to_netcdf(xr_datasets, batch['timestamp'] - self.lead_time_hours * 3600)
+                predictions.clear()
+
+    
+    
+        

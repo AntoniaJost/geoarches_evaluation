@@ -1,5 +1,5 @@
 #!/bin/sh
-#SBATCH --job-name=AW-avg-1x42-aimip-interpolgt
+#SBATCH --job-name=AW-M-1-aimip-interpolgt
 #SBATCH --account=bk1450
 #SBATCH --qos=normal
 #SBATCH --partition=gpu
@@ -13,16 +13,17 @@
 
 
 . ~/.bashrc
+
 lenv  # activate weather env
 export HYDRA_FULL_ERROR=1
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 
 # First use right branch of geoarches repository
-cdga
-git checkout feature/forcings
+# cdga
+# git checkout feature/forcings
 
 # Switch back to geoarches_evaluation repository
-cdge 
+# cdge 
 
 ######### ArchesWeatherDet #########
 name="AW-M-1-aimip-w_forcings-interpolgt"
@@ -35,11 +36,12 @@ srun --cpu-bind=none --mem-bind=none --mem=0  --cpus-per-task=8 python3 rollout.
     '++aimip.continue_rollout=False' \
     '++aimip.member="avg"' \
     '++aimip.sst_scenario="0"' \
-    '++start_timestamp="1980-01-01T12:00"' \
-    '++end_timestamp="2025-12-31T12:00"' \
+    '++start_timestamp="1978-10-01T00:00"' \
+    '++end_timestamp="2025-12-31T00:00"' \
     '++aimip.ablate_forcings=False' \
     '++aimip.replace_land_grid_from_forcings=False' \
-    '++avg_with_modules=["AW-M-42-aimip-w_forcings-interpolgt"]' \
+
+#'++avg_with_modules=["AW-M-42-aimip-w_forcings-interpolgt"]' \
 
 ######### ArchesWeatherGen #########
 #name="archesgen-m-gc-sst_sic-weight_01"

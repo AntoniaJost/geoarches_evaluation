@@ -2,13 +2,14 @@ import numpy as np
 import xarray as xr 
 
 from metrics import utils as eval_utils
-import pandas as pd
 
 def compute_annual_cycle(data, detrend=False, remove_annual_cycle=False, base_period=None):
         if detrend:
             data = eval_utils.detrend_data(data, base_period=base_period, variables_to_detrend=['sea_surface_temperature', '2m_temperature'])
         
-        data = eval_utils.compute_mean(data, groupby=['time.year', 'time.month'], reduce_dims=['time', 'latitude', 'longitude'])
+        data = eval_utils.compute_mean(data, reduce_dims=['longitude']) # weighted does not contain latitude dim
+        print(data)
+        data = data.groupby(['time.year', 'time.month']).mean('time', skipna=True)
         data = data.stack(time=('year', 'month')).transpose('time', ...)
         
         data = data.reset_index('time')

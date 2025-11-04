@@ -145,17 +145,14 @@ class AAIMIPRollout:
         self.store_initial_condition = store_initial_condition
 
         if self.dataset.forcings_ds is not None:
+
             self.update_forcings = True
-            print('Loading monthly forcings from dataset ... ', end='')
-            timestamps = [np.datetime64("1979-01").astype('datetime64[M]') + np.timedelta64(i, 'M') for i in range(12)]
-            forcings = []
-            for t in timestamps:
-                forcings.append(self.dataset.load_forcings(t))
-            self.monthly_forcings = torch.stack(forcings, dim=0) # already in batch format
-            self.land_sea_mask = self.dataset.forcings_ds['land_sea_mask'].to_numpy()  # (1, lat, lon)
-            self.land_sea_mask = torch.tensor(self.land_sea_mask, dtype=torch.float32).cuda() # (1, 1, lat, lon)
+            self.monthly_forcings = self.dataset.forcings_ds
+
+            # self.land_sea_mask = self.dataset.forcings_ds['land_sea_mask'].to_numpy()  # (1, lat, lon)
+            # self.land_sea_mask = torch.tensor(self.land_sea_mask, dtype=torch.float32).cuda() # (1, 1, lat, lon)
             
-            if self.sst_scenario in ['2', '4']:
+            """if self.sst_scenario in ['2', '4']:
                 # Apply sst scenario adjustment to forcings
 
                 sst_index = self.dataset.forcing_vars.index('sea_surface_temperature')
@@ -168,7 +165,7 @@ class AAIMIPRollout:
                     (self.monthly_forcings[:, sst_index, ...] - self.dataset.forcings_mean[None, sst_index, None, None]) 
                 self.monthly_forcings[:, sst_index, ...] /= self.dataset.forcings_std[None, sst_index, None, None]
             self.monthly_forcings = self.monthly_forcings.cuda().unsqueeze(0)
-            print('Done.')
+            print('Done.')"""
         else:
             self.monthly_forcings = None
             with xr.open_dataset(self.dataset.files[0], **self.dataset.xr_options) as obs:
@@ -265,20 +262,13 @@ class AAIMIPRollout:
         return batch, start_timestamp
     
     def get_forcings(self, timestamp):
-        assert self.monthly_forcings is not None, "No forcings dataset found in the dataloader."
-        
-        if self.ablate_forcings:
-            # return zeros of the same shape as forcings
-            forcings = self.monthly_forcings[:, 0, ...].squeeze(1)
-            return forcings
-        else:
-            # get month of the current timestamp 
-            month = pd.to_datetime(timestamp.cpu(), unit='s').tz_localize(None).month
-            
-            # gather the forcings for the current month
-            forcings = self.monthly_forcings[:, month - 1, ...].squeeze(1)  # (1, C, lat, lon)
+        timestamp = pd.to_datetime(timestamp.cpu(), unit='s').tz_localize(None).to_numpy()
+        if isinstance(timestamp, np.ndarray) or isinstance(timestamp, list):
+            timestamp = timestamp[0]  # Use the first timestamp if it's an array or list
+        forcings = self.dataset.load_forcings(timestamp)
+        print("Forcings shape: ", forcings.shape )
+        return forcings.cuda() 
 
-        return forcings
 
     def compute_steps_per_years(self, start_timestamp, end_timestamp):
         """
@@ -345,7 +335,7 @@ class AAIMIPRollout:
             for i, o in enumerate(output)
         ]
 
-        xarrays = xr.concat(xarrays, dim=self.dataset.time_dim_name)
+        xarrays = xr.concat(xarrays, dim="time")
 
         # Concatente land sea mask to xarray from cached file in self.dataset
         #lsm_data = xr.DataArray(
@@ -359,18 +349,6 @@ class AAIMIPRollout:
         #lsm_data = lsm_data.rename('land_sea_mask')
         #xarrays = xr.merge([xarrays, lsm_data])
         
-        # Rename time dimension to 'time' if it's not already named 'time'
-        if self.dataset.time_dim_name != 'time':
-            xarrays = xarrays.rename_dims({self.dataset.time_dim_name: 'time'})
-            xarrays = xarrays.rename_vars({self.dataset.time_dim_name: 'time'})
-            xarrays = xarrays.set_coords('time')
-
-        # Rename level dimension to 'level' if it's not already named 'level'
-        if self.dataset.level_dim_name != 'level' and self.dataset.level_dim_name in xarrays.dims:
-            xarrays = xarrays.rename_dims({self.dataset.level_dim_name: 'level'})
-            xarrays = xarrays.rename_vars({self.dataset.level_dim_name: 'level'})
-            xarrays = xarrays.set_coords('level')
-
         # Generate file name
         file_name = self.get_file_name(timestamp)
 
@@ -390,3 +368,4 @@ class AAIMIPRollout:
         steps_per_year = self.compute_steps_per_years(start_timestamp, end_timestamp)
 
         return batch, steps_per_year
+    

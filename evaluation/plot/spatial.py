@@ -8,7 +8,6 @@ from matplotlib import patches as mpatches
 import cartopy.crs as ccrs
 
 from cartopy import feature as cfeature
-from cartopy.mpl.ticker import LongitudeFormatter, LatitudeFormatter
 
 from geoarches.dataloaders.era5 import surface_variables_short, level_variables_short
 
@@ -43,6 +42,10 @@ def plot_variable(x, fname, output_path, title=None, ax=None, cbar_label=None, c
         y_inline=False
     )
 
+    print('Data Shape: ', x.shape)
+    if x.shape[0] == 1:
+        x = np.squeeze(x, axis=0)
+    
     img = ax.imshow(
         x, transform=ccrs.PlateCarree(central_longitude=central_longitude), cmap=cmap, vmin=vmin, vmax=vmax,
         norm=norm

@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import pandas as pd
 
 
 fontdict = {'font.size': 14}
@@ -53,7 +52,7 @@ def plot_timeseries(x, xticks=None, title='', xlabel='', ylabel='', output_path=
     ax = fig.add_subplot(111)
     plt.rcParams.update(fontdict)
 
-    
+
     ax.plot(x, color='black', linewidth=linewidth, label=label, marker=marker)
 
     if fill == 'all':
@@ -81,7 +80,6 @@ def plot_timeseries(x, xticks=None, title='', xlabel='', ylabel='', output_path=
     if std is not None:
         ax.fill_between(range(len(x)), x - std, x + std, color='gray', alpha=0.2)
 
-
     if xticks is not None:
         if isinstance(xticks, tuple) or isinstance(xticks, list):
             ax.set_xticks(ticks=xticks[0], labels=xticks[1], rotation=45, ha='right')
@@ -90,6 +88,8 @@ def plot_timeseries(x, xticks=None, title='', xlabel='', ylabel='', output_path=
             ax.set_xticks(
                 ticks=range(0, len(xticks), mult),
                 labels=xticks[::mult], rotation=45, ha='right')
+
+
 
     ax.set_title(title)
     ax.set_xlabel(xlabel)

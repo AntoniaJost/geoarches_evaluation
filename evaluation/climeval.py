@@ -23,12 +23,14 @@ from scipy.stats import linregress
 
 
 from geoarches.dataloaders.era5 import surface_variables_short, level_variables_short
-from metrics.utils import compute_anomaly, compute_mean, compute_std_dev, detrend_data
+from geoarches.metrics.metric_base import compute_lat_weights, compute_lat_weights_weatherbench
+
+from metrics.utils import compute_anomaly, compute_mean, detrend_data
 from metrics.frequency_domain import compute_radial_spectrum, welch_psd
 from metrics import timeseries as eval_timeseries
 
 #from metrics.kernel_density_estimation import kde_variability_plot
-from plot.timeseries import plot_annual_oscillation, plot_timeseries, get_xlabel_multiplier
+from plot.timeseries import plot_timeseries, get_xlabel_multiplier
 from plot.spatial import plot_variable, plot_temperature_with_geopotential_contours, plot_anomalies
 from plot.spectra import plot_radial_spectrum
 
@@ -71,196 +73,116 @@ def evaluate_ensemble(fnc):
     return eval_ensemble
 
 
-'''class ClimateEvaluator:
-    """
-    A class to evaluate climate data.
-    """
-
-    R = 6.371e6  # Radius of the Earth in meters
-    g = 9.81     # Acceleration due to gravity in m/s^2
-    pi = 3.14159
-    units = {
-        'sea_surface_temperature': '[K]',
-        '2m_temperature': '[K]',
-        'mean_sea_level_pressure': '[Pa]',
-        'specific_humidity': '[kg/kg]',
-        'geopotential': '[m^2/s^2]',
-        'u_component_of_wind': '[m/s]',
-        'v_component_of_wind': '[m/s]',
-        '10m_u_component_of_wind': '[m/s]',
-        '10m_v_component_of_wind': '[m/s]',
-        'sea_ice_cover': '[fraction]',
-        'temperature': '[K]',
-        'vertical_velocity': '[m/s]',
-
-    }
-
-
-    def __init__(self, file_path, variables, levels, dimension_indexers, filename_filter=None):
-        """
-        Initialize the ClimateEvaluator with data.
-        args:
-        :param file_path: Path to the netcdf files.
-        :param model_label: Label for the dataset (e.g., model name).
-        :param variables: List of variables to load.
-        :param levels: List of levels to load (for level variables).
-        :param dimension_indexers: Dictionary mapping standard dimension names to dataset-specific names.
-        :param filename_filter: Optional string to filter filenames.
-        """
-
-        self.variables = variables
-        self.levels = levels
+class ModelContainer:
+    def __init__(self, path, label, dimension_indexers=None):
+        self.path = path
+        self.label = label
         self.dimension_indexers = dimension_indexers
 
-        # Load dataset and select only the required levels and variables
-        file_paths = sorted(glob.glob(file_path, '*.nc'))
-
-        if filename_filter is not None:
-            file_paths = [f for f in file_paths if filename_filter in f]
-
-        self.data = xr.open_mfdataset(
-            paths=file_paths, 
-            combine="by_coords", 
-            preprocess=self.preprocess
-        )
-
-        # Ensure dimensions are in the order time, level, latitude, longitude
-        self.data = self.data.transpose('time', 'level', 'latitude', 'longitude')
+    def _load_data(self):
+        fpaths = glob.glob(self.path + "/*.nc")
+        fpaths.sort()
+        print("Opening data from:", self.path, " ...", end=" ")
+        data = xr.open_mfdataset(fpaths, combine="by_coords")
+        print('Done')
 
         if self.data.latitude[0] < self.data.latitude[-1]:  # if latitude is descending
-            self.data['latitude'] = self.data.latitude[::-1]
+            data['latitude'] = data.latitude[::-1]
+        data = data.roll(longitude=-len(data.longitude) // 2, roll_coords=False)  # Roll longitude to match data
 
-        self.data = self.data.roll(longitude=-len(self.data.longitude) // 2, roll_coords=False)
+        if self.dimension_indexers is not None:
+            data = data.rename(**self.dimension_indexers)
 
-    def preprocess(self, dataset):
-        dataset = dataset.sel({self.dimension_indexers['level']: self.levels})
-        dataset = dataset[self.variables]
-        dataset = dataset.rename({v: k for k, v in self.dimension_indexers.items()})
+        self.data = data
 
-        return dataset
+
+class TimeSeries:
+    def __init__(self, figsize=(10, 6), dpi=150):
+        self.figsize = figsize
+        self.dpi = dpi
+
+    def visualize_on_ax(self, ax, data):
+        pass 
+
+    def create_figure(self):
+        fig, ax = plt.subplots(figsize=self.figsize, dpi=self.dpi)
+        return fig, ax
+    
+    def extract_min_max_time(self, data):
+        time_min = data.time.min().values
+        time_max = data.time.max().values
+        return time_min, time_max
+    
+    def get_time_limits(self, data):
+        min_times = []
+        max_times = []
+        for model_label, annual_cycle in data.items():
+            time_min, time_max = self.extract_min_max_time(annual_cycle)
+            min_times.append(time_min)
+            max_times.append(time_max)
+        min_time = min(min_times)
+        max_time = max(max_times)
+
+        return min_time, max_time
+
+    def create_time_labels(self, min_time, max_time):
+        time_range = np.arange(np.datetime64(min_time, 'M'), np.datetime64(max_time, 'M') + np.timedelta64(1, 'M'), np.timedelta64(1, 'M'))
+        xtick_labels = [str(t)[:7] for t in time_range]
+        xtick_ids = list(range(len(xtick_labels)))
+
+        return xtick_labels, xtick_ids
 
     
-    def annual_cycle(self, detrend=False):
+class AnnualCycle(TimeSeries):
+    def __init__(self, figsize=(10, 6), dpi=150, linewidth=2):
+        self.figsize = figsize
+        self.dpi = dpi
+        self.linewidth = linewidth
 
-        annual_cycle = eval_timeseries.compute_annual_cycle(self.data, detrend, self.base_period)
-        return annual_cycle
+    def visualize_to_ax(self, data, output_path):
+        pass
+
+    def compute_annual_cycle(self, data):
+        eval_timeseries.compute_annual_cycle(data)
+
+    def compute(self, model_containers):
+        annual_cycles = {}
+        for model_data in model_containers:
+            annual_cycle = self.compute_annual_cycle(model_data.data)
+            annual_cycles[model_data.label] = annual_cycle
+
+        return annual_cycles
+
+
     
-    def latitude_time_plot(self, period=None):
-        """
-        Plot a latitude-time plot for a given variable.
-        
-        :param variable: Variable to plot.
-        :param level: Level to plot (optional).
-        """
+    def evaluate(self, model_containers):
+        annual_cycles = self.compute(model_containers)
 
-        print('Select data from time period ... ', end='')
-        if period is not None:
-            data = data.sel(time=slice(period[0], period[1]))
-        print('Done')
-        
-        print('Interpolate missing latitudes ... ', end='')
-        lat = data.latitude.to_numpy()
-        data['latitude'] = lat[::-1]  # to interpolate, lat has to be monotonically increasing
-        data = data.interpolate_na(dim='longitude', method='linear', fill_value="extrapolate").ffill(dim='latitude')
-        data['latitude'] = lat  # restore original latitudes
-        print('Done')
+        min_times, max_times = [], []
 
-        print('Compute mean over time and longitude ... ', end='')
-        data = compute_mean(data, reduce_dims=['time', 'longitude'], groupby=['time.year', 'time.month'])
-        data = data.stack(time=['year', 'month'])
+
+
+        xtick_labels = []
+        xtick_ids = []
         
-        return data
+
+
+class GeoClimate:
+    def __init__(self, models):
+
+        self.model_containers = []
+        for model in models:
+            container = ModelContainer(
+                path=model['path'],
+                label=model['label'],
+                dimension_indexers=model.get('dimension_indexers')
+            )
+            container._load_data()
+            self.model_containers.append(container)
+
+    def evaluate(self):
+        pass 
     
-    def oceanic_nino_index(self, period=None, detrend=False, power_spectrum=False, regression_analysis=False):
-        assert 'sea_surface_temperature' in list(self.data.data_vars.keys()), \
-            "Missing sea_surface_temperature variable"
-        
-        if period:
-            data = self.data.sel(time=slice(period[0], period[1]))
-        else:
-            data = self.data
-
-        print(f"Compute Oceanic Nino Index for period {period} ... ", end='')
-
-        nino34, sst = eval_timeseries.compute_oni_index(
-            data=data, 
-            base_period=self.base_period, 
-            detrend=detrend
-        )
-
-        print('Done')
-
-        # make time multindex normal index
-        nino34 = nino34.reset_index('time')
-        sst = sst.reset_index('time')
-
-        print(nino34.values)
-
-        if power_spectrum:
-            print("Compute power spectrum ... ", end='')
-            np_nino34 = nino34.to_numpy()
-
-            spec_tuple = welch_psd(np_nino34)  # frequency, power_spectrum
-            print('Done')
-        else:
-            spec_tuple = None
-
-        if regression_analysis:
-            regression_map = self.regression_analysis(sst, nino34)
-        else:
-            regression_map = None
-        
-        return nino34, spec_tuple, regression_map 
-
-    def _get_var_spectrum(data, var, level=None):
-        if data is None:
-            return None
-        
-        x = data.sel(level=level)[var].to_numpy()
-        spec = np.stack([compute_radial_spectrum(x=xi) for xi in x], axis=0)
-        spec = np.mean(spec, axis=0) 
-        
-        return spec
-    
-    def radial_spectrum(self, data, groupby=['time.year', 'time.month'], projection_years=[2020], ref_year=2020, against_reference=False, **kwargs):
-        """
-        Compute the radial spectrum of the given data.
-        """
-
-
-        # Check if reference data is available
-        if against_reference:
-            print("Load reference data and compute reduction ... ", end="")
-            
-            reference = self.select_reference_data(data)
-            reference = reference.fillna(value=reference.mean(dim=["latitude", "longitude"], skipna=True))
-            reference = reference.sel(time=reference.time.dt.year.isin([ref_year]))
-            reference = reference.compute()
-
-            print("Done")
-        else:
-            print("No reference data provided. Skipping reference comparison.")
-            reference = None
-
-        print("Load data and compute reduction ... ", end="")
-
-        data = data.fillna(value=data.mean(dim=["longitude"], skipna=True)).ffill(dim="latitude").bfill(dim="latitude")
-        data = data.sel(time=data.time.dt.year.isin([ref_year]))
-
-        vars = [(v, None) for v in self.variables['surface']]
-        vars.extend(product(self.variables['level'], self.levels))
-
-        spectra = {}
-        for var, lvl in vars:
-            
-            spec = self._get_var_spectrum(data, var, lvl)
-            var_name = surface_variables_short[var] if var in surface_variables_short.keys() else level_variables_short[var] + str(lvl)
-            spectra[var_name] = spec
-            
-        # Store spectra on disk as netcdf
-    #   path = f"{self.output_path}/climeval/radial_spectrum" 
-'''
-
 class ClimateEvaluator:
     """
     A class to evaluate climate data.
@@ -295,7 +217,8 @@ class ClimateEvaluator:
             start_stamp=None, end_stamp=None, 
             target_dimension_indexers=None,
             reference_dimension_names=None,
-            model_label='Model'
+            model_label='Model',
+            use_lat_weighting='weatherbench'
         ):
 
         """
@@ -336,6 +259,21 @@ class ClimateEvaluator:
         if self.data.latitude[0] < self.data.latitude[-1]:  # if latitude is descending
             self.data['latitude'] = self.data.latitude[::-1]
         self.data = self.data.roll(longitude=-len(self.data.longitude) // 2, roll_coords=False)  # Roll longitude to match data
+
+
+        # Get lat weighting function and make them a data array with latitudes
+        if use_lat_weighting == 'weatherbench':
+            self.lat_weights = compute_lat_weights_weatherbench(len(self.data.latitude))
+            self.lat_weights = self.lat_weights.squeeze(-1)
+            self.lat_weights = xr.DataArray(self.lat_weights, coords=[self.data.latitude], dims=["latitude"])
+        elif use_lat_weighting == 'standard':
+            self.lat_weights = compute_lat_weights(len(self.data.latitude))
+            self.lat_weights = self.lat_weights.squeeze(-1)
+            self.lat_weights = xr.DataArray(self.lat_weights, coords=[self.data.latitude], dims=["latitude"])
+        else:
+            self.lat_weights = None
+
+        
 
         # Open reference data
         if reference_path is not None:
@@ -405,6 +343,39 @@ class ClimateEvaluator:
                 reference = detrend_data(reference, self.base_period, ['sea_surface_temperature', '2m_temperature'])
 
             return reference
+
+    def instant_spatial_map(self, data, timestamp):
+        """year, month = str(timestamp).split('-')[:2]
+        season = self.get_season_from_month(int(month))
+        for var, lvl in self.variables:
+            print(f"Processing {var} at level {lvl} ... ", end='')
+            x = data.sel(level=lvl).sel(time=timestamp)[var].to_numpy()
+
+            if var in ['sea_surface_temperature', '2m_temperature']:
+                mask = self.land_sea_mask.astype(bool)
+            else:
+                mask = None
+
+            reference = None  # do not plot reference for bias maps
+
+            #if var in ['sea_surface_temperature', 'sea_ice_cover']:
+                
+            #    x = np.where(mask == 0, x, np.nan)
+
+            var_name = self.get_variable_short_name(var, lvl)
+            title = f"Bias Map {var_name} {year}" + (f" {season}" if season is not None else '')
+            fname = f"bias_map_{var_name}_{year}" + (f"_{season}" if season is not None else '') + ".png"
+            plot_variable(
+                x=x,
+                fname=fname,
+                output_path=path,
+                title=title,
+                cbar_label=self.units[var],
+                cmap='coolwarm',
+                norm=colors.TwoSlopeNorm(vcenter=0),
+
+            )"""
+        pass
 
     def bias_map(self, data, year=2020, season=None, **kwargs):
 
@@ -599,9 +570,12 @@ class ClimateEvaluator:
             if 'sea_ice_cover' in data.data_vars:
                 data['sea_ice_cover'] = xr.where(self.land_sea_mask == 0, data['sea_ice_cover'], 0)
 
+        if self.lat_weights is not None:
+            data = data.weighted(self.lat_weights).mean(dim='latitude')
+
         annual_cycle = eval_timeseries.compute_annual_cycle(data, detrend, self.base_period)
 
-        
+            
         #annual_cycle.to_netcdf(f"{output_path}/data.nc")
 
         if 'std' in kwargs.keys():  # if ensemble
@@ -616,7 +590,11 @@ class ClimateEvaluator:
         # reference has to start at the same time as self.data
         if against_reference:
             print('Compute reference annual cycle ... ', end='')
-            ref_annual_cycle = self._annual_cycle(self.select_reference_data(data, detrend=False), detrend=detrend)
+            reference = self.select_reference_data(data, detrend=False)
+            if self.lat_weights is not None:
+                reference = reference.weighted(self.lat_weights).mean(dim='latitude')
+
+            ref_annual_cycle = self._annual_cycle(reference, detrend=detrend)
             #ref_annual_cycle.to_netcdf(f"{output_path}/reference_annual_cycle.nc")
             print('Done')
 
@@ -948,7 +926,7 @@ class ClimateEvaluator:
             xticks=nino34.time.values.astype('datetime64[M]'),
             xlabel=r'Time',
             ylabel=r'°C',
-            output_path=os.path.join(output_path, f'nino34_timeseries.png'),
+            output_path=os.path.join(output_path, 'nino34_timeseries.png'),
             label=self.model_label, 
             fill='positive_negative', 
         )    
@@ -959,7 +937,7 @@ class ClimateEvaluator:
                 xticks=nino34.time.values.astype('datetime64[M]'),
                 xlabel=r'Time',
                 ylabel=r'°C',
-                output_path=os.path.join(output_path, f'era5_nino34_timeseries_ref.png'),
+                output_path=os.path.join(output_path, 'era5_nino34_timeseries_ref.png'),
                 label='ERA5', 
                 fill='positive_negative', 
             )
@@ -993,7 +971,7 @@ class ClimateEvaluator:
                 extent=(-120, 130, 50, -50), 
                 title='Nino3.4 Regression Map', 
                 cmap='coolwarm', cbar_label='K/(K)', 
-                fname=f'nino34_regression_map.png', 
+                fname='nino34_regression_map.png', 
                 output_path=output_path, 
                 central_longitude=180, 
                 global_projection='Robinson', 
@@ -1109,7 +1087,7 @@ class ClimateEvaluator:
         fname = f"{ref}correlation_{variable1_name}_{variable2_name}"
 
         if ref != '':
-            title_prefix = f"ERA5 "
+            title_prefix = "ERA5 "
         else:
             title_prefix = ''
 
@@ -1374,7 +1352,7 @@ class ClimateEvaluator:
                         
                         v = OmegaConf.to_container(v)
                         method(data=self.data, **v)
-                        print(f"\n---------------------------\n")
+                        print("\n---------------------------\n")
                     else:
                         print(f"{k} is not callable.")
                 else:

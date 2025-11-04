@@ -1,4 +1,3 @@
-import time
 import xarray as xr
 1
 
@@ -46,6 +45,7 @@ def preprocess_data(data, groupby=None, base_period=None):
 
     if groupby:
         data = data.groupby(groupby)
+        print(data)
 
     return data
 
@@ -53,6 +53,7 @@ def compute_mean(data, reduce_dims, groupby=None, base_period=None):
     """
     Compute the mean of the data over the specified dimensions.
     """
+
     data = preprocess_data(data, groupby=groupby, base_period=base_period)
     data = data.mean(dim=reduce_dims, skipna=True)
 

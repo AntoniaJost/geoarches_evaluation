@@ -3,8 +3,6 @@ import xarray as xr
 from glob import glob 
 import matplotlib.pyplot as plt
 import numpy as np
-from plot.timeseries import plot_timeseries
-from plot.timeseries import get_xlabel_multiplier
 from metrics.utils import compute_annual_cycle
 
 units = {
