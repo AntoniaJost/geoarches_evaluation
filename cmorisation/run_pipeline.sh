@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=cmor
-#SBATCH --time=01:00:00
+#SBATCH --time=08:00:00
 #SBATCH --partition=compute
 #SBATCH --account=bk1450
 #SBATCH --ntasks=1
@@ -14,13 +14,14 @@ source /work/bk1450/a270220/aimip/bin/activate
 set -euo pipefail
 
 # ADJUST THESE 5 VARS ACCORDING TO YOUR DATA & STRUCTURE
-MODEL_TAG="AW-M-0-aimip-stats-forcings_surface-interpolgt" #"AW-M-1-aimip-stats-forcings_surface" # part of folder path of input data
+MODEL_TAG="AW-M-0-google-forcings-maskedLoss" #"AW-M-1-aimip-stats-forcings_surface" # part of folder path of input data
 NAME="ArchesWeather" #"ArchesWeather"
 ENSEMBLE="r0i1p1f1"
-TAG="AW-M-0-aimip-stats-forcings_surface-interpolgt_aimip_${ENSEMBLE}_gn" #"AW-M-1-aimip-stats-forcings_surface_aimip_${ENSEMBLE}_gn" # part of the input filename
-INPUT_DIR="/home/b/b383170/repositories/geoarches_evaluation/evaluation/evalstore/AW-M-0-aimip-stats-forcings_surface-interpolgt/1980-01-01T12:00/sst_0/daily/member_00/data"
+
+TAG="AW-M-0-google-forcings-maskedLoss_${ENSEMBLE}_gn" #"AW-M-1-aimip-stats-forcings_surface_aimip_${ENSEMBLE}_gn" # part of the input filename
+INPUT_DIR="/home/b/b383170/repositories/scripts/evalstore/AW-M-0-google-forcings-maskedLoss/1978-10-01T00:00/sst_0/daily/member_01"
 # "/work/bk1450/a270220/evalstore/AW-M-1-aimip-stats-forcings_surface/1980-01-01T12:00_2018-12-31T12:00/daily/member_0"
-TIMESPAN="1980-2024" # timespan of your input files
+TIMESPAN="1978-2024" # timespan of your input files
 ZG_TO_500="true" # decide if zg (geopotential height) shall be reduced to only contain 500hPa
 
 export RUN_DIR="/work/bk1450/a270220/cmorised_awm/${MODEL_TAG}"

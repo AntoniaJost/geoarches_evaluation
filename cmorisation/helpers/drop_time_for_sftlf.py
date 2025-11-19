@@ -3,7 +3,7 @@ import os
 import sys
 
 # in and output files/paths
-INFILE  = "/work/bk1450/a270220/repos/pcmdi_metrics/land_sea_mask_calculations/archesweather-m-seed0-gc-sst_sic-weight_01_01-res/4_cmorisation/Amon/sftlf/gn/sftlf_Amon_ArchesWeatherGen_aimip_r0i1p1f1_gn_201901-201912.nc"
+INFILE  = "/work/bk1450/a270220/repos/pcmdi_metrics/land_sea_mask_calculations/archesweather-m-seed0-gc-sst_sic-weight_01_01-res/4_cmorisation/Amon/sftlf/gn/sftlf_Amon_ArchesWeather_aimip_r0i1p1f1_gn_201901-201912.nc"
 OUTFILE = "/work/bk1450/a270220/repos/pcmdi_metrics/land_sea_mask_calculations/final_land_sea_masks/1.5x1.5/sftlf_fx_ArchesWeatherGen_1-5x1-5_aimip_r0i1p1f1.nc"
 
 def clean_sftlf(infile, outfile):
