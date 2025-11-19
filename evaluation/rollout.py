@@ -23,7 +23,10 @@ def main(cfg):
 
     # Load the module based on the configuration
     print("Loading module for rollout ...", end=' ')
-    module, loaded_config = load_module(cfg.model_name)
+    if cfg.avg_with_modules is not None:
+        module, loaded_config = load_module(cfg.model_name, avg_with_modules=cfg.avg_with_modules)
+    else:
+        module, loaded_config = load_module(cfg.model_name)
     print("Done.")
 
     # Get dataset

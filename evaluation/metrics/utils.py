@@ -1,6 +1,16 @@
 import time
 import xarray as xr
+1
 
+def remove_annual_cycle(data, groupby):
+    """
+    Remove the annual cycle from the data by subtracting the monthly mean.
+    """
+    mean_cycle = data.groupby('time.month').mean('time')
+
+    filtered_data = data.groupby(groupby) - mean_cycle
+
+    return filtered_data
 
 def kinetic_energy(data, level, latitude, longitude):
     """
@@ -91,7 +101,6 @@ def compute_anomaly(data: xr.Dataset, reduce_dims: list, groupby: list = None, m
 
     # Compute the anomalies
     anomalies = data.groupby(groupby).mean(reduce_dims) - mean
-
 
     return anomalies
 

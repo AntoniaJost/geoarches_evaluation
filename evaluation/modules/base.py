@@ -31,8 +31,17 @@ def load_batch_from_prediction(xrds: xr.Dataset, dataset: Era5Forecast):
     surface and level. 
     levels: List of pressure levels to select from the dataset.
     """
-    state = xrds.isel(time=-1)
-    prev_state = xrds.isel(time=-2)
+    if not all([v[0] in xrds.dims.keys() for v in dataset.dimension_indexers.values()]):#
+        # Respect dimension indexing of the loaded dataset (depends on dim names in dataset)
+        name_map = {
+            k: v[0] for k, v in dataset.dimension_indexers.items() if v[0] not in xrds.dims.keys()
+        }  # only rename dimensions that are not already named correctly
+
+        xrds = xrds.rename_dims(name_map)
+        xrds = xrds.rename_vars(name_map)
+
+    state = xrds.isel({name_map['time']: -1})
+    prev_state = xrds.isel({name_map['time']: -2})
 
     state = dataset.convert_to_tensordict(state)
     state = dataset.normalize(state)
@@ -42,16 +51,18 @@ def load_batch_from_prediction(xrds: xr.Dataset, dataset: Era5Forecast):
     batch = {
         "state": state,
         "prev_state": prev_state,
-        "next_state": state
+        "next_state": state # just a surrogate for forecasting
     }
 
+    # access time coordinate via string
+    time = xrds.coords[name_map['time']].values[-1].astype('datetime64[ns]').item()
     timestamp = torch.tensor(
-        xrds.time.values[-1].astype('datetime64[ns]').item() // 10**9, dtype=torch.float64)
-    
+        time // 10**9, dtype=torch.float64)
+
     batch['timestamp'] = timestamp
     batch['lead_time_hours'] = torch.tensor(dataset.lead_time_hours, dtype=torch.int64)
 
-    return batch, xrds.time.values[-1]
+    return batch, xrds.coords[name_map['time']].values[-1]
 
 
 class AAIMIPRollout:
@@ -67,11 +78,12 @@ class AAIMIPRollout:
             init_method=1, 
             physics=1, 
             forcings=1,
-            sst_scenario='',  # either '', '2' or '4' indicating the sst scenario
+            sst_scenario='',  # either '0', '2' or '4' indicating the sst scenario
             continue_rollout=True,
-            replace_nans_from_state=True,
+            replace_land_grid_from_forcings=True,
             replacement_method='daily', # daily, monthly forcings, running mean
             store_initial_condition=True,
+            ablate_forcings=False
         ): 
 
         """
@@ -97,19 +109,27 @@ class AAIMIPRollout:
         self.timestamps = [t[-1] for t in self.dataset.timestamps]
         self.lead_time_hours = self.dataset.lead_time_hours
         self.continue_rollout = continue_rollout
+        self.ablate_forcings = ablate_forcings
+
+        files = glob.glob(self.dataset.path + "/*.nc")  
+        files = sorted(files)
+        files = [f for f in files if "12h" in f]
+        self.era5_ds = xr.open_mfdataset(files)  # to avoid multiprocessing issues with xarray
 
         # Storage configuration
         if storage_type not in ["monthly", "daily"]:
             raise ValueError("storage_type type must be either 'monthly' or 'daily'.")
         self.storage_type = storage_type
-        self.storage_path = os.path.join(storage_path, f"member_{member:02d}", "data")
+        member_id = f"{member:02d}" if isinstance(member, int) else member
+        if ablate_forcings:
+            self.storage_path = os.path.join(storage_path, f"member_{member_id}", "ablate_forcings", "data")
+        else:
+            self.storage_path = os.path.join(storage_path, f"member_{member_id}", "data")
+
+        
         os.makedirs(self.storage_path, exist_ok=True)
 
         os.makedirs(self.storage_path, exist_ok=True)
-
-        # File name specific parameters
-        if not isinstance(member, int) or member < 0:
-            raise ValueError("Member must be a non-negative integer.")
         
         if grid_type not in ['gn', 'gr']:
             raise ValueError("Grid type must be one of 'gn', or 'gr'.")
@@ -120,29 +140,40 @@ class AAIMIPRollout:
         self.physics = physics  
         self.forcings = forcings  
         self.sst_scenario = sst_scenario
-        self.replace_nans_from_state = replace_nans_from_state
+        self.replace_land_grid_from_forcings = replace_land_grid_from_forcings
         self.replacement_method = replacement_method
         self.store_initial_condition = store_initial_condition
 
         if self.dataset.forcings_ds is not None:
+            self.update_forcings = True
             print('Loading monthly forcings from dataset ... ', end='')
             timestamps = [np.datetime64("1979-01").astype('datetime64[M]') + np.timedelta64(i, 'M') for i in range(12)]
             forcings = []
             for t in timestamps:
                 forcings.append(self.dataset.load_forcings(t))
-            self.monthly_forcings = torch.stack(forcings, dim=0).unsqueeze(0).cuda()  # already in batch format
+            self.monthly_forcings = torch.stack(forcings, dim=0) # already in batch format
             self.land_sea_mask = self.dataset.forcings_ds['land_sea_mask'].to_numpy()  # (1, lat, lon)
-            self.land_sea_mask = torch.tensor(self.land_sea_mask, dtype=torch.float32).cuda()  # (1, 1, lat, lon)
+            self.land_sea_mask = torch.tensor(self.land_sea_mask, dtype=torch.float32).cuda() # (1, 1, lat, lon)
             
             if self.sst_scenario in ['2', '4']:
                 # Apply sst scenario adjustment to forcings
-                print(f"Applying SST scenario p{self.sst_scenario}K to forcings ...", end='')
-                sst_index = self.dataset.forcings_variables.index('sea_surface_temperature')
-                self.monthly_forcings[:, :, sst_index, ...] += float(self.sst_scenario)
 
+                sst_index = self.dataset.forcing_vars.index('sea_surface_temperature')
+                self.monthly_forcings[:, sst_index, ...] = self.monthly_forcings[:, sst_index, ...]  * self.dataset.forcings_std[None, sst_index, None, None]
+                self.monthly_forcings[:, sst_index, ...] = self.monthly_forcings[:, sst_index, ...] + self.dataset.forcings_mean[None, sst_index, None, None]
+                print(f"Applying SST scenario p{self.sst_scenario}K to forcings ...", end='')
+                self.monthly_forcings[:, :, sst_index, ...] += float(self.sst_scenario)
+                # re-normalize
+                self.monthly_forcings[:, sst_index, ...] = \
+                    (self.monthly_forcings[:, sst_index, ...] - self.dataset.forcings_mean[None, sst_index, None, None]) 
+                self.monthly_forcings[:, sst_index, ...] /= self.dataset.forcings_std[None, sst_index, None, None]
+            self.monthly_forcings = self.monthly_forcings.cuda().unsqueeze(0)
             print('Done.')
         else:
             self.monthly_forcings = None
+            with xr.open_dataset(self.dataset.files[0], **self.dataset.xr_options) as obs:
+                self.land_sea_mask = obs['land_sea_mask'].to_numpy()[0]  # (1, lat, lon)
+                self.land_sea_mask = torch.tensor(self.land_sea_mask, dtype=torch.float32).cuda()
             warn("No forcings dataset found in the dataloader. Make sure this is intended.")
 
     def get_file_name(self, timestamp, member=None):
@@ -159,7 +190,7 @@ class AAIMIPRollout:
         
         if self.sst_scenario in ['2', '4']:
             sst_string = f"p{self.sst_scenario}"
-        elif self.sst_scenario == '':
+        elif self.sst_scenario == '0':
             sst_string = ''
 
         if self.storage_type == "monthly":
@@ -179,14 +210,18 @@ class AAIMIPRollout:
         
         batch = self.dataset[idx]
         batch = {k: v.float() if 'state' in k else v for k, v in batch.items()}
-        print(batch.keys())
 
         if self.sst_scenario in ['2', '4']:
             print(f"Applying SST scenario p{self.sst_scenario}K to state and prev state...", end='')
-            sst_index = self.dataset.forcings_variables.index('sea_surface_temperature')
-            batch['state']['surface'][:, sst_index, ...] += float(self.sst_scenario)
-            batch['prev_state']['surface'][:, sst_index, ...] += float(self.sst_scenario)
+            sst_index = self.dataset.variables['surface'].index('sea_surface_temperature')
+            sst_val = float(self.sst_scenario)
+            print(sst_index, sst_val)
+            batch = self.dataset.denormalize(batch)  # denormalize first
+            batch['state']['surface'][sst_index, ...] += float(self.sst_scenario)
+            batch['prev_state']['surface'][sst_index, ...] += float(self.sst_scenario)
+            batch = self.dataset.normalize(batch)
             print('Done.')
+            
         return batch
     
     def update_batch(self, loop_batch, prediction):
@@ -209,8 +244,14 @@ class AAIMIPRollout:
             xrds = xr.load_dataset(f)
             batch, timestamp = load_batch_from_prediction(xrds, self.dataset)
 
+            # add forcings to batch if module requires it
+            if self.module.embedder.forcings_embedding is not None:
+                forcings = self.get_forcings(batch['timestamp'])
+                batch['forcings'] = forcings.squeeze(0)  # remove batch dimension
+                batch['future_forcings'] = self.monthly_forcings  # placeholder, not used in current models
+
             print("Batch loaded from timestamp: ", timestamp)
-            start_timestamp = timestamp + np.timedelta64(self.lead_time_hours, 'h')
+            start_timestamp = timestamp
 
             print("Continuing rollout from timestamp: ", start_timestamp)
             self.store_initial_condition = False  # Do not store initial condition if continuing rollout
@@ -221,16 +262,21 @@ class AAIMIPRollout:
             batch = self.timestamp_to_batch(start_timestamp)
             print("Done.")
 
-        return batch
+        return batch, start_timestamp
     
     def get_forcings(self, timestamp):
         assert self.monthly_forcings is not None, "No forcings dataset found in the dataloader."
         
-        # get month of the current timestamp 
-        month = pd.to_datetime(timestamp.cpu(), unit='s').tz_localize(None).month
-        
-        # gather the forcings for the current month
-        forcings = self.monthly_forcings[:, month - 1, ...].squeeze(1)  # (1, C, lat, lon)
+        if self.ablate_forcings:
+            # return zeros of the same shape as forcings
+            forcings = self.monthly_forcings[:, 0, ...].squeeze(1)
+            return forcings
+        else:
+            # get month of the current timestamp 
+            month = pd.to_datetime(timestamp.cpu(), unit='s').tz_localize(None).month
+            
+            # gather the forcings for the current month
+            forcings = self.monthly_forcings[:, month - 1, ...].squeeze(1)  # (1, C, lat, lon)
 
         return forcings
 
@@ -256,7 +302,12 @@ class AAIMIPRollout:
         else:
             # first check if the first timestamp is at the beginning of a year
             # If not, the first year will be partial and we need to compute the number of days in that year
-            if start_timestamp.astype('datetime64[M]').astype(int) % 12 != 0 or start_timestamp.astype('datetime64[D]').astype(int) % 31 != 0:
+            # use pd.to_datetime to convert to datetime64[M] and datetime64[D]
+            
+            day = pd.to_datetime(start_timestamp.astype('datetime64[D]')).day
+            month = pd.to_datetime(start_timestamp.astype('datetime64[M]')).month
+            if day != 31 and month != 12:
+                print("First year is partial.")
                 last_day_of_first_year = (start_timestamp.astype('datetime64[Y]') + np.timedelta64(1, 'Y') - np.timedelta64(1, 'D')).astype('datetime64[D]')
                 days_in_first_year = (last_day_of_first_year - start_timestamp.astype('datetime64[D]')).astype('timedelta64[D]').astype(int)
                 print("Days in the first year: ", days_in_first_year)
@@ -264,10 +315,13 @@ class AAIMIPRollout:
                 rollout_steps += [366 if isleap((start_timestamp.astype('datetime64[Y]') + np.timedelta64(i, 'Y')).astype(int) + 1970) 
                     else 365 for i in range(1, nyears)]
             else:
-                rollout_steps = [366 if isleap((start_timestamp + np.timedelta64(i, 'Y')).astype('datetime64[Y]').astype(int) + 1970) 
+                print("First year is full.")
+                rollout_steps = [366 if isleap((start_timestamp.astype('datetime64[Y]') + np.timedelta64(i, 'Y')).astype(int) + 1970) 
                     else 365 for i in range(nyears)
                 ]
 
+
+        print('#### Rollout Steps #### \n', rollout_steps)
         print("Computed rollout steps per year (in days): \n", rollout_steps)
 
         return rollout_steps
@@ -284,14 +338,38 @@ class AAIMIPRollout:
 
         xarrays = xr.concat(xarrays, dim=self.dataset.time_dim_name)
 
+        # Concatente land sea mask to xarray from cached file in self.dataset
+        #lsm_data = xr.DataArray(
+        #    self.land_sea_mask.cpu().numpy(), 
+        #   dims=(self.dataset.dimension_indexers['latitude'], 
+        #         self.dataset.dimension_indexers['longitude']
+        #          )
+        #)
+        
+        #lsm_data = lsm_data.expand_dims({self.dataset.time_dim_name: xarrays[self.dataset.time_dim_name]})
+        #lsm_data = lsm_data.rename('land_sea_mask')
+        #xarrays = xr.merge([xarrays, lsm_data])
+        
+        # Rename time dimension to 'time' if it's not already named 'time'
+        if self.dataset.time_dim_name != 'time':
+            xarrays = xarrays.rename_dims({self.dataset.time_dim_name: 'time'})
+            xarrays = xarrays.rename_vars({self.dataset.time_dim_name: 'time'})
+            xarrays = xarrays.set_coords('time')
+
+        # Rename level dimension to 'level' if it's not already named 'level'
+        if self.dataset.level_dim_name != 'level' and self.dataset.level_dim_name in xarrays.dims:
+            xarrays = xarrays.rename_dims({self.dataset.level_dim_name: 'level'})
+            xarrays = xarrays.rename_vars({self.dataset.level_dim_name: 'level'})
+            xarrays = xarrays.set_coords('level')
+
         # Generate file name
         file_name = self.get_file_name(timestamp)
 
         # Save the xarray to a netcdf file
         if self.storage_type == "monthly":
-            xarrays = xarrays.mean(dim=self.dataset.time_dim_name)
-            xarrays[self.dataset.time_dim_name] = pd.to_datetime(timestamp.astype('datetime64[M]')).tz_localize(None)
-            xarrays = xarrays.set_coords(self.dataset.time_dim_name)
+            xarrays = xarrays.mean(dim='time')
+            xarrays['time'] = pd.to_datetime(timestamp.astype('datetime64[M]')).tz_localize(None)
+            xarrays = xarrays.set_coords('time')
             xarrays.to_netcdf(f"{self.storage_path}/{file_name}")
         elif self.storage_type == "daily":
             xarrays.to_netcdf(f"{self.storage_path}/{file_name}")
@@ -299,7 +377,7 @@ class AAIMIPRollout:
             raise ValueError("Storage type must be either 'monthly' or 'daily'.")
         
     def rollout(self, start_timestamp, end_timestamp):
-        batch = self.get_initial_batch(start_timestamp)
+        batch, start_timestamp = self.get_initial_batch(start_timestamp)
         steps_per_year = self.compute_steps_per_years(start_timestamp, end_timestamp)
 
         return batch, steps_per_year
