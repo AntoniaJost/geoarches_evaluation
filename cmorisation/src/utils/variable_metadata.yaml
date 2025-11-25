@@ -46,13 +46,13 @@ tas:
   cell_methods: "area: time: mean"
   cell_measures: "area: areacella"
 
-ts:
-  standard_name: "surface_temperature"
-  long_name: "Surface Temperature"
-  comment: "Temperature of the lower boundary of the atmosphere"
-  units: "K"
-  cell_methods: "area: time: mean"
-  cell_measures: "area: areacella"
+tos:
+  standard_name: "sea_surface_temperature"
+  long_name: "Sea Surface Temperature"
+  comment: "Temperature of upper boundary of the liquid ocean, including temperatures below sea-ice and floating ice shelves."
+  units: "degC"
+  cell_methods: "area: mean where sea time: mean"
+  cell_measures: "area: areacello"
 
 ua:
   standard_name: "eastward_wind"

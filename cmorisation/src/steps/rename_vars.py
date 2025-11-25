@@ -100,6 +100,14 @@ class RenameVarsStep(Step):
                             conv = float(unit_map.get('pr'))
                             ds['pr'] = ds['pr'] / conv
 
+                    # Convert units for sea surface temperature (from Kelvin → degC)
+                    if 'tos' in ds:
+                        if ds.sizes.get('time', 0) == 0:
+                            self.logger.warning(f"{RED} [RenameVarsStep] 'tos' has no time in {fp}; skipping var")
+                        else:
+                            conv = float(unit_map.get('tos', 273.15))  # default: subtract 273.15
+                            ds['tos'] = ds['tos'] - conv
+
                     # if pressure levels are specified, retain only those levels
                     if 'plev' in ds.dims and levels:
                         vars_with_level = [v for v in ds.data_vars if 'plev' in ds[v].dims]
