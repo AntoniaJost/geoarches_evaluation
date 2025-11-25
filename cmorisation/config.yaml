@@ -18,7 +18,7 @@ rename_vars:
     v_component_of_wind: va
     geopotential: zg
     surface_pressure: ps
-    sea_surface_temperature: ts
+    sea_surface_temperature: tos
     2m_temperature: tas
     10m_u_component_of_wind: uas
     10m_v_component_of_wind: vas
@@ -29,9 +29,10 @@ rename_vars:
 
   unit_mapping:
     pr: 86400.0 # conversion factor
+    tos: 273.15
   pressure_levels: [1000, 850, 700, 500, 250, 100, 50]
   zg_to_500: ${ZG_TO_500} # decide if var zg (geopot. height) shall be reduced to only 500hPa (AIMIP requirement)
-  time_slice_daily: ["1978-01-01", "2040-12-31"] # ["1978-10-01", "1979-12-31"]
+  time_slice_daily: ["1978-10-01", "1979-12-31"] # ["1978-10-01", "1979-12-31"]
 
 split_vars:
   input_dir: "${general.work_dir}/2_renamed"
