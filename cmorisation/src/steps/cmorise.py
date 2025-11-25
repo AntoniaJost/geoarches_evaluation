@@ -5,6 +5,7 @@ import pandas as pd
 import glob
 import yaml
 import subprocess
+from datetime import datetime, timezone
 from steps.step_base import Step
 from utils.cmor_helpers import (
     add_lat_lon_bounds, add_time_bounds,
@@ -154,9 +155,11 @@ class CmoriseStep(Step):
                     # add attributes to dataset
                     ds.attrs.update(global_attrs)
                     freq = frequency.get(scale)
+                    creation_date = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                     ds.attrs.update({
                         "tracking_id": tracking_id,
-                        "frequency": freq
+                        "frequency": freq,
+                        "creation_date": creation_date
                     })
 
                     has_plev = ('plev' in ds[var].dims) if var in ds else False
