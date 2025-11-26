@@ -19,6 +19,7 @@ class SplitVarsStep(Step):
         out_base = cfg['output_dir']
         daily_pref = cfg.get('daily_prefix', 'daily_')
         monthly_pref = cfg.get('monthly_prefix', 'monthly_')
+        time_slice = cfg.get('time_slice_daily', None)
 
         # process both daily and monthly files
         for is_daily, prefix in [(True, daily_pref), (False, monthly_pref)]:
@@ -29,23 +30,54 @@ class SplitVarsStep(Step):
             force_rerun = get_force_rerun_flag(freq, self.logger)
 
             # find the matching concatenated file in input directory
-            files = [f for f in os.listdir(in_dir)
-                     if f.startswith(prefix) and f.endswith('.nc')]
-            if len(files) != 1:
-                self.logger.error(f"{RED} [SplitVarsStep] Expected one {freq} file, found {len(files)}")
+            if is_daily and time_slice:
+                # daily files use daily time slice
+                t0 = pd.to_datetime(time_slice[0]).strftime('%Y%m%d')
+                t1 = pd.to_datetime(time_slice[1]).strftime('%Y%m%d')
+                expected_name = f"{daily_pref}{t0}_{t1}.nc"
+            else:
+                # there typically only exists one file for monthly covering the entire time span 
+                mon_files = sorted([
+                    f for f in os.listdir(in_dir)
+                    if f.startswith(monthly_pref) and f.endswith(".nc")
+                ])
+                if not mon_files:
+                    self.logger.error(f"{RED} [SplitVarsStep] No monthly files found in {in_dir}")
+                    continue
+                expected_name = mon_files[-1]
+
+            concat_path = os.path.join(in_dir, expected_name)
+
+            if not os.path.exists(concat_path):
+                self.logger.error(
+                    f"{RED} [SplitVarsStep] Expected file '{expected_name}' not found in {in_dir}"
+                )
                 continue
-            concat_path = os.path.join(in_dir, files[0])
 
             # open dataset once and list all contained variables
             ds = xr.open_dataset(concat_path)
             self.logger.info(f"{GREEN} [SplitVarsStep] Opened {concat_path} with vars: {list(ds.data_vars)}")
 
-            # extract start and end dates from the time dimension
-            tmin = pd.to_datetime(str(ds.time.min().values))
-            tmax = pd.to_datetime(str(ds.time.max().values))
+            # extract start and end dates from the time dimension (monthly) or time slice (daily)
             fmt = '%Y%m%d' if is_daily else '%Y%m'
-            t0 = tmin.strftime(fmt)
-            t1 = tmax.strftime(fmt)
+            if is_daily and time_slice:
+                try:
+                    t0 = pd.to_datetime(time_slice[0]).strftime(fmt)
+                    t1 = pd.to_datetime(time_slice[1]).strftime(fmt)
+                    self.logger.info(
+                        f"[SplitVarsStep] Using time_slice_daily for naming: {t0}–{t1}"
+                    )
+                except Exception as e:
+                    self.logger.error(
+                        f"{RED} [SplitVarsStep] Invalid time_slice_daily format: {time_slice} ({e})"
+                    )
+                    raise
+            else:
+                tmin = pd.to_datetime(str(ds.time.min().values))
+                tmax = pd.to_datetime(str(ds.time.max().values))
+                t0 = tmin.strftime(fmt)
+                t1 = tmax.strftime(fmt)
+                self.logger.info(f"[SplitVarsStep] Using dataset time range for naming: {t0}–{t1}")
 
             # loop over each variable and save it into its own file
             for var in ds.data_vars:
@@ -76,7 +108,6 @@ class SplitVarsStep(Step):
 
                 # skip if exists and non-empty
                 if not force_rerun and os.path.exists(out_file) and os.path.getsize(out_file) > 0:
-                    print(f"[SplitVarsStep] Skipping existing file: {out_file}")
                     self.logger.info(f"{GREEN} [SplitVarsStep] Skipping existing file: {out_file}")
                     continue
                 elif os.path.exists(out_file):

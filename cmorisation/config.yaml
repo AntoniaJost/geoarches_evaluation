@@ -32,13 +32,14 @@ rename_vars:
     tos: 273.15
   pressure_levels: [1000, 850, 700, 500, 250, 100, 50]
   zg_to_500: ${ZG_TO_500} # decide if var zg (geopot. height) shall be reduced to only 500hPa (AIMIP requirement)
-  time_slice_daily: ["1978-10-01", "1979-12-31"] # ["1978-10-01", "1979-12-31"]
+  time_slice_daily: ${TIMESPAN_DAILY}
 
 split_vars:
   input_dir: "${general.work_dir}/2_renamed"
   output_dir: "${general.work_dir}/3_split"
   daily_prefix: "daily_"
   monthly_prefix: "monthly_"
+  time_slice_daily: ${TIMESPAN_DAILY}
 
 cmorise:
   base_dir: "${general.work_dir}/3_split"
@@ -52,6 +53,7 @@ cmorise:
   ensemble: "${ENSEMBLE}"    
   output_root: "${general.work_dir}/4_cmorisation"
   zg_to_500: ${ZG_TO_500}
+  time_slice_daily: ${TIMESPAN_DAILY}
   global_attributes:
     Conventions: "CF-1.7 CMIP-6.2"
     activity_id: "AIMIP"

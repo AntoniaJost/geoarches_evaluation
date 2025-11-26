@@ -24,6 +24,7 @@ class RenameVarsStep(Step):
         levels     = cfg.get('pressure_levels', [])
         zg_to_500  = cfg.get('zg_to_500', False)
         time_slice = cfg.get('time_slice_daily', None)
+        self.logger.debug(f"[RenameVarsStep] Time slice is: {time_slice}")
 
         for in_dir in input_dirs:
             # determine processing type from folder name
@@ -37,15 +38,26 @@ class RenameVarsStep(Step):
                 self.logger.info(f"{GREEN}[RenameVarsStep] No files to process in {in_dir}; skipping")
                 continue
 
-            # infer time range from first and last file for naming output
-            try:
-                t0 = xr.open_dataset(files[0], decode_times=True).time.min().values
-                tN = xr.open_dataset(files[-1], decode_times=True).time.max().values
-                start = pd.to_datetime(str(t0)).strftime(date_format)
-                end   = pd.to_datetime(str(tN)).strftime(date_format)
-            except Exception as e:
-                self.logger.error(f"{RED} [RenameVarsStep] Could not read time range from {files[0]}–{files[-1]}: {e}")
-                continue
+            # determine time range for output naming
+            if base_name == "daily" and time_slice:
+                # use the configured time slice for daily
+                try:
+                    start = pd.to_datetime(time_slice[0]).strftime(date_format)
+                    end   = pd.to_datetime(time_slice[1]).strftime(date_format)
+                    self.logger.info(f"[RenameVarsStep] Using time_slice_daily for file naming: {start}–{end}")
+                except Exception as e:
+                    self.logger.error(f"{RED} [RenameVarsStep] Invalid time_slice_daily format: {time_slice} ({e})")
+                    raise
+            else:
+                # infer time range from first and last file for naming monthly output
+                try:
+                    t0 = xr.open_dataset(files[0], decode_times=True).time.min().values
+                    tN = xr.open_dataset(files[-1], decode_times=True).time.max().values
+                    start = pd.to_datetime(str(t0)).strftime(date_format)
+                    end   = pd.to_datetime(str(tN)).strftime(date_format)
+                except Exception as e:
+                    self.logger.error(f"{RED} [RenameVarsStep] Could not read time range from {files[0]}–{files[-1]}: {e}")
+                    continue
 
             # If rerun is forced, delete all daily_*.nc or monthly_*.nc before continuing
             if force_rerun:
@@ -67,7 +79,6 @@ class RenameVarsStep(Step):
 
             # skip processing if valid output already exists and rerun is not forced
             if not force_rerun and os.path.exists(outfile) and os.path.getsize(outfile) > 0:
-                print(f"[RenameVarsStep] Skipping {base_name} processing: output exists {outfile}")
                 self.logger.info(f"{GREEN} [RenameVarsStep] Skipping {base_name} processing: output exists {outfile}")
                 continue
 
