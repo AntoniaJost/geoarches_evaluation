@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH --job-name=cmor_renu1.1
-#SBATCH --time=06:00:00
+#SBATCH --job-name=cmor_renu2.2
+#SBATCH --time=01:00:00
 #SBATCH --partition=compute
 #SBATCH --account=bk1450
 #SBATCH --ntasks=1
@@ -14,19 +14,17 @@ source /work/bk1450/a270220/aimip/bin/activate
 set -euo pipefail
 
 # ADJUST THESE 5 VARS ACCORDING TO YOUR DATA & STRUCTURE
-MODEL_TAG="AWM-1_renu" #"AW-M-0-google-forcings-maskedLoss" #"AW-M-1-aimip-stats-forcings_surface" # part of folder path of input data
+MODEL_TAG="AWM-3_renu" # part of folder path of input data
 NAME="ArchesWeather" #"ArchesWeather"
 ENSEMBLE="r1i1p1f1"
 
-TAG="AWM-1_renu_${ENSEMBLE}_gn" #"AW-M-0-google-forcings-maskedLoss_${ENSEMBLE}_gn" #"AW-M-1-aimip-stats-forcings_surface_aimip_${ENSEMBLE}_gn" # part of the input filename
-INPUT_DIR="/home/b/b383170/repositories/geoarches_evaluation/data/rollouts/AWM-1_renu/1978-10-01T00:00/sst_0/daily/member_0" 
-# "/home/b/b383170/repositories/scripts/evalstore/AW-M-0-google-forcings-maskedLoss/1978-10-01T00:00/sst_0/daily/member_01"
-# "/work/bk1450/a270220/evalstore/AW-M-1-aimip-stats-forcings_surface/1980-01-01T12:00_2018-12-31T12:00/daily/member_0"
+TAG="AWM-3_renu_${ENSEMBLE}_gn" # part of the input filename
+INPUT_DIR="/home/b/b383170/repositories/geoarches_evaluation/data/rollouts/AWM-3_renu/1978-10-01T00:00/sst_0/daily/member_0" 
 TIMESPAN="1978-2025" # timespan of your input files
+TIMESPAN_DAILY='["1978-10-01", "1979-12-31"]' # timespan for which daily data is wanted. has to be of format ["start date", "end date"], cannot span multiple time frames, needs to be run twice. ["1978-10-01", "1979-12-31"], ["2024-01-01", "2024-12-31"]
 ZG_TO_500="false" # decide if zg (geopotential height) shall be reduced to only contain 500hPa
 
 export RUN_DIR="/work/bk1450/a270220/cmorised_awm/${MODEL_TAG}"
-# "/work/bk1450/a270220/cmorised_awm/${MODEL_TAG}"
 
 mkdir -p "${RUN_DIR}/logs" \
          "${RUN_DIR}/1_means/daily_means" \
@@ -36,8 +34,8 @@ mkdir -p "${RUN_DIR}/logs" \
          "${RUN_DIR}/4_cmorisation"
 
 # Create a per-run config to pass RUN_DIR, ENSEMBLE and MODEL_TAG
-export ENSEMBLE MODEL_TAG ZG_TO_500 NAME
-envsubst '${RUN_DIR} ${ENSEMBLE} ${MODEL_TAG} ${ZG_TO_500} ${NAME}' < config.yaml > "${RUN_DIR}/config.yaml"
+export ENSEMBLE MODEL_TAG ZG_TO_500 NAME TIMESPAN_DAILY
+envsubst '${RUN_DIR} ${ENSEMBLE} ${MODEL_TAG} ${ZG_TO_500} ${NAME} ${TIMESPAN_DAILY}' < config.yaml > "${RUN_DIR}/config.yaml"
 echo "Wrote per-run config: ${RUN_DIR}/config.yaml"
 
 # DO NOT CHANGE THESE! 

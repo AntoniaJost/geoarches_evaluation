@@ -80,7 +80,7 @@ class CmoriseStep(Step):
         freq_map   = {'monthly': 'Amon', 'daily': 'day'}
         frequency = {'monthly': 'mon', 'daily': 'day'} 
         zg_to_500      = cfg.get('zg_to_500', False)
-
+        time_slice     = cfg.get('time_slice_daily', None)
         # generate tracking id (cmip convention)
         tracking_id = str(uuid.uuid4())
 
@@ -106,16 +106,27 @@ class CmoriseStep(Step):
                 try:
                     ds = xr.open_dataset(fname)
 
-                    # extract time range from data
-                    tmin = pd.to_datetime(str(ds.time.min().values))
-                    tmax = pd.to_datetime(str(ds.time.max().values))
-                    # format time stamps for filenames
-                    if scale == 'monthly':
-                        start = tmin.strftime('%Y%m')
-                        end   = tmax.strftime('%Y%m')
+                    # extract time range from time slice for daily data or total time range for monthly data
+                    if scale == "daily" and time_slice:
+                        try:
+                            start = pd.to_datetime(time_slice[0]).strftime('%Y%m%d')
+                            end   = pd.to_datetime(time_slice[1]).strftime('%Y%m%d')
+                            self.logger.info(f"[CmoriseStep] Using time_slice_daily for naming: {start}-{end}")
+                        except Exception as e:
+                            self.logger.error(f"{RED} [CmoriseStep] Invalid time_slice_daily: {time_slice} ({e})")
+                            raise
                     else:
-                        start = tmin.strftime('%Y%m%d')
-                        end   = tmax.strftime('%Y%m%d')
+                        tmin = pd.to_datetime(str(ds.time.min().values))
+                        tmax = pd.to_datetime(str(ds.time.max().values))
+                        # format time stamps for filenames
+                        if scale == 'monthly':
+                            start = tmin.strftime('%Y%m')
+                            end   = tmax.strftime('%Y%m')
+                        else:
+                            start = tmin.strftime('%Y%m%d')
+                            end   = tmax.strftime('%Y%m%d')
+                        self.logger.info(f"[CmoriseStep] Using dataset time range for naming: {start}-{end}")
+                        
                     # build aimip conform filename and output path
                     subdir   = grid
                     filename = f"{var}_{cfreq}_{model}_aimip_{ensemble}_{subdir}_{start}-{end}.nc"
@@ -125,7 +136,6 @@ class CmoriseStep(Step):
 
                     # skip file if already processed
                     if os.path.exists(out_path) and os.path.getsize(out_path) > 0:
-                        print(f"[CmoriseStep] Skipping; already exists: {out_path}")
                         self.logger.info(f"{GREEN} [CmoriseStep] Skipping; already exists: {out_path}")
                         ds.close()
                         continue
