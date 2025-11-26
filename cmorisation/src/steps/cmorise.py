@@ -98,7 +98,6 @@ class CmoriseStep(Step):
                 end   = pd.to_datetime(time_slice[1]).strftime('%Y%m%d')            
             input_dir = os.path.join(work_dir, scale, '*', grid, f"*_{start}_{end}.nc")
             files     = sorted(glob.glob(input_dir))
-            print(files)
 
             for fname in files:
                 if not fname.endswith(".nc"):
