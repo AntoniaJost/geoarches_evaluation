@@ -169,10 +169,15 @@ class CmoriseStep(Step):
                     ds.attrs.update(global_attrs)
                     freq = frequency.get(scale)
                     creation_date = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    if scale == "monthly":
+                        table_id = "Amon"
+                    elif scale == "daily":
+                        table_id = "day"
                     ds.attrs.update({
                         "tracking_id": tracking_id,
                         "frequency": freq,
-                        "creation_date": creation_date
+                        "creation_date": creation_date,
+                        "table_id": table_id
                     })
 
                     has_plev = ('plev' in ds[var].dims) if var in ds else False
