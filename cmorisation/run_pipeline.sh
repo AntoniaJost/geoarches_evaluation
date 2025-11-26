@@ -14,15 +14,15 @@ source /work/bk1450/a270220/aimip/bin/activate
 set -euo pipefail
 
 # ADJUST THESE 5 VARS ACCORDING TO YOUR DATA & STRUCTURE
-MODEL_TAG="AWM-3_renu" # part of folder path of input data
+MODEL_TAG="AWM-4_renu" # part of folder path of input data
 NAME="ArchesWeather" #"ArchesWeather"
 ENSEMBLE="r1i1p1f1"
 
-TAG="AWM-3_renu_${ENSEMBLE}_gn" # part of the input filename
-INPUT_DIR="/home/b/b383170/repositories/geoarches_evaluation/data/rollouts/AWM-3_renu/1978-10-01T00:00/sst_0/daily/member_0" 
+TAG="AWM-4_renu_${ENSEMBLE}_gn" # part of the input filename
+INPUT_DIR="/home/b/b383170/repositories/geoarches_evaluation/data/rollouts/AWM-4_renu/1978-10-01T00:00/sst_0/daily/member_0" 
 TIMESPAN="1978-2025" # timespan of your input files
-TIMESPAN_DAILY='["1978-10-01", "1979-12-31"]' # timespan for which daily data is wanted. has to be of format ["start date", "end date"], cannot span multiple time frames, needs to be run twice. ["1978-10-01", "1979-12-31"], ["2024-01-01", "2024-12-31"]
-ZG_TO_500="false" # decide if zg (geopotential height) shall be reduced to only contain 500hPa
+TIMESPAN_DAILY='["2024-01-01", "2024-12-31"]' # timespan for which daily data is wanted. has to be of format ["start date", "end date"], cannot span multiple time frames, needs to be run twice. ["1978-10-01", "1979-12-31"], ["2024-01-01", "2024-12-31"]
+ZG_TO_500="true" # decide if zg (geopotential height) shall be reduced to only contain 500hPa
 
 export RUN_DIR="/work/bk1450/a270220/cmorised_awm/${MODEL_TAG}"
 
