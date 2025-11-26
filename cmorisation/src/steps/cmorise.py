@@ -173,7 +173,7 @@ class CmoriseStep(Step):
                     })
 
                     has_plev = ('plev' in ds[var].dims) if var in ds else False
-                    treat_as_plev = has_plev or (var == "zg" and zg_to_500)
+                    treat_as_plev = has_plev or (var == "zg" and not zg_to_500)
 
                     # save dataset to netcdf
                     ds.to_netcdf(out_path)
