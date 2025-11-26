@@ -93,8 +93,12 @@ class CmoriseStep(Step):
         # process each temporal scale (daily/monthly)
         for scale in scales:
             cfreq     = freq_map.get(scale, scale)
-            input_dir = os.path.join(work_dir, scale, '*', grid, '*.nc')
+            if time_slice:
+                start = pd.to_datetime(time_slice[0]).strftime('%Y%m%d')
+                end   = pd.to_datetime(time_slice[1]).strftime('%Y%m%d')            
+            input_dir = os.path.join(work_dir, scale, '*', grid, f"*_{start}_{end}.nc")
             files     = sorted(glob.glob(input_dir))
+            print(files)
 
             for fname in files:
                 if not fname.endswith(".nc"):
