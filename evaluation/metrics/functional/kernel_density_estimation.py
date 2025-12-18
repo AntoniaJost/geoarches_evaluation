@@ -6,6 +6,37 @@ from scipy.stats import linregress
 import matplotlib.gridspec as gridspec
 import xarray as xr
 
+
+def _kde_1d(data: np.ndarray, bandwidth: str | float = "scott"):
+    """
+    Compute 1D Kernel Density Estimate for `data` array.
+    Returns the KDE object.
+    """
+    kde = gaussian_kde(data, bw_method=bandwidth)
+
+    return kde
+
+def compute_1d_pdf_over_grid(data, ygrid_bounds):
+    """
+    Compute PDFs over a common y-grid for a list of KDE operators.
+    """
+
+    ygrid = np.linspace(*ygrid_bounds, 400)
+    pdf = _kde_1d(data.values)
+
+    return pdf
+
+def _get_ygrid_bounds(anom_values):
+    """
+    Get min and max values over a list of anomaly arrays.
+    """
+
+    vmin = float(min(v.min() for v in anom_values))
+    vmax = float(max(v.max() for v in anom_values))
+
+    return vmin, vmax
+
+
 def _global_monthly_anomalies(ds: xr.Dataset, var: str, level, base_period):
     """
     Global-mean monthly anomalies for `var` (optionally at pressure `level`),
@@ -31,15 +62,19 @@ def _global_monthly_anomalies(ds: xr.Dataset, var: str, level, base_period):
     anom = xm.groupby("time.month") - clim
     return anom.dropna("time")
 
+
 # fitting a linear regression to the time series and subtracting it from the fit
 def _detrend_series(anom):
     """
     Removes linear trend from 1D time series
     """
-    years = anom['time'].dt.year + (anom['time'].dt.dayofyear - 1) / 365.25
+
+    years = anom["time"].dt.year + (anom["time"].dt.dayofyear - 1) / 365.25
     slope, intercept, *_ = linregress(years, anom.values)
     detrended = anom - (slope * years + intercept)
+
     return detrended
+
 
 def variability_kde_timeseries(
     data: xr.Dataset,
@@ -52,7 +87,7 @@ def variability_kde_timeseries(
     include_era5: bool = True,
     bandwidth: str | float = "scott",
     output_fname: str = "variability_kde_timeseries",
-    detrend:bool = False,
+    detrend: bool = False,
 ):
     """
     Make a two-panel figure:
@@ -68,7 +103,11 @@ def variability_kde_timeseries(
     model_anom = _global_monthly_anomalies(data, variable, level, base_period)
 
     # anomalies for ERA5
-    era5_anom = _global_monthly_anomalies(era5, variable, level, base_period) if include_era5 else None
+    era5_anom = (
+        _global_monthly_anomalies(era5, variable, level, base_period)
+        if include_era5
+        else None
+    )
 
     # remove all-NaN case early
     if model_anom.isnull().all():
@@ -77,7 +116,7 @@ def variability_kde_timeseries(
     if include_era5 and era5_anom is not None and era5_anom.isnull().all():
         print("No valid anomalies for ERA5, skipping plot.")
         return
-    
+
     # optionally detrend
     if detrend:
         model_anom = _detrend_series(model_anom)
@@ -113,45 +152,51 @@ def variability_kde_timeseries(
         era5_kde = gaussian_kde(era5_anom.values, bw_method=bandwidth)
         era5_pdf = era5_kde(ygrid)
 
-    # figure layout
-    outdir = os.path.join(output_path, "variability", "plots")
-    os.makedirs(outdir, exist_ok=True)
-    fig = plt.figure(figsize=(12, 4), dpi=150)
-    gs = gridspec.GridSpec(1, 2, width_ratios=[1, 4], wspace=0.25)
+def plot_variability_kde_timeseries(
+        pdfs, anomalies, ygrid, variable, labels, output_path, 
+        output_fname, colors
+    ):
+    
+    # make figure
+    fig = plt.figure(figsize=(10, 6))
+    gs = gridspec.GridSpec(2, 1, height_ratios=[1, 2], hspace=0.3)
 
-    # (a) KDE panel: density (x) vs anomaly (y)
-    ax_kde = fig.add_subplot(gs[0, 0])
-    if era5_anom is not None:
-        ax_kde.plot(era5_pdf, ygrid, color="black", label="ERA5")
-    ax_kde.plot(model_pdf, ygrid, color="red", label=label_model)
-    lab_var = f"{variable}" + (f" at {level} hPa" if level is not None else "")
-    ax_kde.set_xlabel("Density")
-    ax_kde.set_ylabel(f"{lab_var} anomaly (K)")
-    ax_kde.grid(True, alpha=0.3)
-    ax_kde.legend(loc="best", frameon=False)
+    # (a) KDE plot
+    ax0 = fig.add_subplot(gs[0])
+    for i, pdf in enumerate(pdfs):
+        ax0.plot(
+            pdf,
+            ygrid,
+            label=labels[i],
+            color=colors[i],
+    )
 
-    # (b) Timeseries panel
-    ax_ts = fig.add_subplot(gs[0, 1])
-    if era5_anom is not None:
-        ax_ts.plot(era5_anom["time"].values, era5_anom.values, color="black", label="ERA5")
-    ax_ts.plot(model_anom["time"].values, model_anom.values, color="red", label=label_model)
-    ax_ts.axhline(0, lw=0.8, color="k", alpha=0.5)
-    ax_ts.set_xlabel("Year")
-    ax_ts.set_ylabel("Anomaly (K)")
-    ax_ts.grid(True, alpha=0.3)
-    ax_ts.legend(loc="upper right", frameon=False)
+    ax0.set_ylabel(f"{variable} anomaly")
+    ax0.set_xlabel("Density")
+    ax0.set_title("(a) Kernel Density Estimate of Monthly Global-Mean Anomalies")
+    ax0.legend()
+    ax0.grid()
 
-    # title
-    title_parts = [
-        f"{label_model} vs ERA5" if include_era5 else label_model,
-        f"{lab_var}",
-        f"Base period: {base_period[0]}–{base_period[1]}",
-        "Detrended" if detrend else "Raw anomalies",
-        f"Kernel: Gaussian",
-        f"Bandwidth: {bandwidth}",
-    ]
-    fig.suptitle(" | ".join(title_parts), fontsize=11)
+    # (b) Timeseries plot
+    ax1 = fig.add_subplot(gs[1])
+    for i, anom in enumerate(anomalies):
+        ax1.plot(
+            anom["time"],
+            anom.values,
+            label=labels[i],
+            color=colors[i],
+    )
 
-    fig.tight_layout(rect=[0, 0.03, 1, 0.95])
-    fig.savefig(os.path.join(outdir, f"{output_fname}.png"))
+    ax1.set_ylabel(f"{variable} anomaly")
+    ax1.set_xlabel("Time")
+    ax1.set_title("(b) Monthly Global-Mean Anomalies Time Series")
+    ax1.axhline(0, color="k", linestyle="--", linewidth=0.8)
+    ax1.legend()
+    ax1.grid()
+
+    # save figure
+    output_dir = os.path.join(output_path, "variability", "plots")
+    os.makedirs(output_dir, exist_ok=True)
+    output_file = os.path.join(output_dir, f"{output_fname}.png")
+    plt.savefig(output_file, dpi=300, bbox_inches="tight")
     plt.close(fig)

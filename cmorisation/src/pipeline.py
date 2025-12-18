@@ -5,7 +5,8 @@
 # 2. Run: RenameVars → SplitVars → Cmorise
 # 3. Optionally delete intermediate outputs
 
-import sys, argparse
+import sys
+import argparse
 from config_loader import ConfigLoader
 import shutil
 import os

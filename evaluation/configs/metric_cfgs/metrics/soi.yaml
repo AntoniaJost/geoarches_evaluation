@@ -1,0 +1,12 @@
+soi:
+  target: SouthernOscillationIndex
+  params:
+    variables: Null
+    use_lat_weighting: weatherbench
+    latitude: 181
+    base_period: [1993, 2014]
+    figsize: [12, 6]
+    dpi: 150
+    linewidth: 2
+    analyze_spectrum: True
+    

@@ -1,6 +1,6 @@
 import numpy as np
-import xarray as xr
-import sys, os
+import sys
+import os
 import logging
 sys.path.insert(0, os.path.abspath(os.path.join(__file__, "..", "..")))
 from logger import WARN

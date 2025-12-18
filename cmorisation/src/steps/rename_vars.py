@@ -129,9 +129,9 @@ class RenameVarsStep(Step):
                     # zg special case, for geopotential height only keep 500 hPa
                     if 'zg' in ds and 'plev' in ds['zg'].dims and zg_to_500 is True:
                         ds['zg'] = ds['zg'].sel(plev=500, drop=False)
-                        self.logger.debug(f"[RenameVarsStep] Reduced geopotential height (zg) to 500hPa")
+                        self.logger.debug("[RenameVarsStep] Reduced geopotential height (zg) to 500hPa")
                     else:
-                        self.logger.debug(f"[RenameVarsStep] Keeping all pressure levels for geopotential height")
+                        self.logger.debug("[RenameVarsStep] Keeping all pressure levels for geopotential height")
 
                     # for daily data only keep restriced time range 
                     if base_name == 'daily' and time_slice and 'time' in ds:

@@ -26,4 +26,4 @@ for f in files:
     else:
         # copy unchanged
         ds.to_netcdf(out_path)
-        print(f" ‼️ no 'valid_time' found, copied unchanged")
+        print(" ‼️ no 'valid_time' found, copied unchanged")

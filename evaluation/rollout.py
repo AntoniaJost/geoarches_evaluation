@@ -1,6 +1,3 @@
-
-
-import os
 import numpy as np
 
 import hydra
@@ -11,7 +8,7 @@ import torch
 from geoarches.lightning_modules.base_module import load_module
 
 # set mixed precision for torch matmul
-torch.set_float32_matmul_precision('medium')
+torch.set_float32_matmul_precision("medium")
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="rollout_config")
@@ -22,36 +19,41 @@ def main(cfg):
     OmegaConf.resolve(cfg)
 
     # Load the module based on the configuration
-    print("Loading module for rollout ...", end=' ')
+    print("Loading module for rollout ...", end=" ")
     if cfg.avg_with_modules is not None:
-        module, loaded_config = load_module(cfg.model_name, avg_with_modules=cfg.avg_with_modules)
+        module, loaded_config = load_module(
+            cfg.model_name, avg_with_modules=cfg.avg_with_modules
+        )
     else:
         module, loaded_config = load_module(cfg.model_name)
     print("Done.")
 
     # Get dataset
-    print("Loading dataset for rollout ...", end=' ')
+    print("Loading dataset for rollout ...", end=" ")
     loaded_config.dataloader.dataset.domain = "all"
-    loaded_config.dataloader.dataset._target_ = "geoarches.dataloaders.era5.Era5Forecast"
+    loaded_config.dataloader.dataset._target_ = (
+        "geoarches.dataloaders.era5.Era5Forecast"
+    )
 
     if hasattr(loaded_config.dataloader.dataset, "pred_path"):
         del loaded_config.dataloader.dataset.pred_path
         del loaded_config.dataloader.dataset.load_hard_neg
-    
-    dataset = hydra.utils.instantiate(loaded_config.dataloader.dataset, loaded_config.stats)
+
+    dataset = hydra.utils.instantiate(
+        loaded_config.dataloader.dataset, loaded_config.stats
+    )
     print("Done.")
 
-
     # Create the rollout module
-    print("Creating rollout module ...", end=' ')
+    print("Creating rollout module ...", end=" ")
     rollout_module = hydra.utils.instantiate(cfg.aimip, module, dataset)
     print("Done.")
 
     print(rollout_module)
-    
+
     # Convert start and end timestamps to numpy datetime64
-    start_timestamp = np.datetime64(cfg.start_timestamp).astype('datetime64[ns]')
-    end_timestamp = np.datetime64(cfg.end_timestamp).astype('datetime64[ns]')
+    start_timestamp = np.datetime64(cfg.start_timestamp).astype("datetime64[ns]")
+    end_timestamp = np.datetime64(cfg.end_timestamp).astype("datetime64[ns]")
 
     rollout_module.rollout(
         start_timestamp=start_timestamp,

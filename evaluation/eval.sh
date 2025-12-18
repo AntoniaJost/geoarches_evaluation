@@ -1,5 +1,5 @@
 #!/bin/sh
-#SBATCH --job-name=AWM0-aimip-interpolgt
+#SBATCH --job-name=eval-AW-avg-1x42-aimip-interpolgt
 #SBATCH --account=bk1450
 #SBATCH --qos=normal
 #SBATCH --partition=gpu
@@ -13,35 +13,57 @@
 
 
 . ~/.bashrc
-
 lenv  # activate weather env
 export HYDRA_FULL_ERROR=1
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 
 # First use right branch of geoarches repository
-# cdga
-# git checkout feature/forcings
+cdga
+git checkout feature/forcings
 
 # Switch back to geoarches_evaluation repository
-# cdge 
+cdge 
 
-######### ArchesWeatherDet #########
-name="AWM0-aimip-interpolgt"
-aimip_name="AWM0-aimip-interpolgt"
+
+########## CONFIG PARAMS ##########
+# generic
+model_name="AW-M-42-aimip-w_forcings-interpolgt"
+type="daily"  # daily, monthly
+period="1980-01-01T12:00"
+member="member_avg"  # member_02, member_avg
+sst_scenario="0"  # either '0', '2' or '4'
+bias_map=True
+annual_cycle=True
+latitude_time_plot=True
+radial_spectrum=True
+oceaninc_nino_index=False
+indian_monsoon_index=False
+
+# evaluator
+model_label="AWM-1x42-igt-interpolgt-0k"
+latitude="latitude"
+longitude="longitude"
+time="valid_time"
+level="pressure_level"
+reference_path="data/era5_1x1/full"
+base_period_start="1995"
+base_period_end="2014"
+
+aimip_name="AW-M-1-aimip-w_forcings-interpolgt"
 echo "Running on ${SLURM_JOB_NUM_NODES} nodes with ${SLURM_CPUS_PER_TASK} CPUs per task."
 echo "Using ${SLURM_GPUS_PER_NODE} GPUs."
-srun --cpu-bind=none --mem-bind=none --mem=0  --cpus-per-task=8 python3 rollout.py \
+srun --cpu-bind=none --mem-bind=none --mem=0  --cpus-per-task=8 python3 climeval.py \
     ++model_name=${name} \
+    
     ++aimip.aimip_name=${aimip_name} \
     '++aimip.continue_rollout=False' \
-    '++aimip.member="0"' \
+    '++aimip.member="avg"' \
     '++aimip.sst_scenario="0"' \
-    '++start_timestamp="1978-10-01T00:00"' \
-    '++end_timestamp="2025-12-31T00:00"' \
+    '++start_timestamp="1980-01-01T12:00"' \
+    '++end_timestamp="2025-12-31T12:00"' \
     '++aimip.ablate_forcings=False' \
     '++aimip.replace_land_grid_from_forcings=False' \
-
-#'++avg_with_modules=["AW-M-42-aimip-w_forcings-interpolgt"]' \
+    '++avg_with_modules=["AW-M-42-aimip-w_forcings-interpolgt"]' \
 
 ######### ArchesWeatherGen #########
 #name="archesgen-m-gc-sst_sic-weight_01"

@@ -5,6 +5,7 @@ import numpy as np
 
 from scipy.signal import welch
 
+
 def _remove_south_pole_lat(x):
     """Remove 90 S lat from data because library requires nlon = nlat*2)
 
@@ -12,8 +13,10 @@ def _remove_south_pole_lat(x):
     """
     if isinstance(x, xr.DataArray):
         return x.sel(latitude=slice(None, -1))
+
     elif isinstance(x, np.ndarray):
-        return x[..., :-1, :]
+        return x[:-1, :]
+
 
 def compute_radial_spectrum(x):
     """Compute the radial spectrum of a 2D grid."""
@@ -26,6 +29,7 @@ def compute_radial_spectrum(x):
 
     return grid.expand().spectrum()
 
+
 def compute_radial_spectra(dataset):
     """Compute the radial spectra for all 2D grids in a dataset."""
     spectra = {}
@@ -33,13 +37,16 @@ def compute_radial_spectra(dataset):
         spectra[var] = compute_radial_spectrum(dataset[var])
     return spectra
 
-def welch_psd(x: Union[np.array, xr.DataArray], fs=1.0, nperseg=128, noverlap=64):
 
+def welch_psd(x: Union[np.array, xr.DataArray], fs=1.0, nperseg=128, noverlap=64):
     """Compute the Welch power spectral density estimate."""
 
     if isinstance(x, xr.DataArray):
         x = x.values
 
-    f, Pxx = welch(x, fs=fs, nperseg=nperseg, noverlap=noverlap, scaling='spectrum')
+    # drop all nan values
+    x = x[~np.isnan(x)]
+
+    f, Pxx = welch(x, fs=fs, nperseg=nperseg, noverlap=noverlap, scaling="spectrum")
 
     return f, Pxx

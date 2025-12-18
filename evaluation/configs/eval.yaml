@@ -1,0 +1,17 @@
+# Specify which configs to use.
+defaults:
+  - data: data  # Tells hydra to use cluster/local.yaml when composing the cfg object.
+  - metric_cfgs: metrics
+  - _self_
+
+target_metrics:
+  - anomaly_kde
+  #- annual_cycle
+  #- lat_lon_avg
+  #- pl_lat
+  #- soi 
+  #- spectrum
+
+output_path: "evalstore/results/AWM_Ensemble-New"
+latitude: 181
+
