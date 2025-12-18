@@ -1,0 +1,13 @@
+annual_cycle:
+  target: AnnualCycle
+  params:
+    variables: 
+      #- [temperature, 850]
+      #- [geopotential, 500]
+      - [sea_ice_cover, null]
+    use_lat_weighting: weatherbench
+    latitude: 181
+    figsize: [12, 6]
+    dpi: 150
+    linewidth: 2
+    

@@ -1,0 +1,10 @@
+defaults:
+  - _self_
+  - metrics/anomaly_kde
+  - metrics/spectrum
+  - metrics/lat_lon_avg
+  - metrics/soi
+  - metrics/annual_cycle
+  - metrics/lat_lon_inst
+  - metrics/pl_lat
+  - metrics/oceanic_nino_index

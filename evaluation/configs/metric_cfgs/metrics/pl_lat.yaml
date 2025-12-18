@@ -1,0 +1,11 @@
+pl_lat:
+  target: XYPlot
+  params:
+    x: latitude
+    y: level
+    time: ['DJF', 'MAM', 'JJA', 'SON']
+    variables:
+      - [temperature, Null]
+      - [specific_humidity, Null]
+    latitude: 181
+    plot_type: contour

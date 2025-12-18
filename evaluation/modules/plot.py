@@ -9,10 +9,9 @@ class ClimatePlotter:
             model_data (dict): Dictionary containing model metrics with keys being the model names and values being the paths to the climate data files.
             reference_data (dict): Dictionary containing reference data names as keys and values being the paths to the climate data files.
         """
-    
+
         self.model_data = model_data
         self.reference_data = reference_data
-
 
     def iter_data(self, var, lvl, fnc, data_path, fnc_kwargs: dict = {}):
         for model_name, model_path in self.model_data.items():
@@ -23,7 +22,7 @@ class ClimatePlotter:
                 x = data.sel(level=lvl)[var]
             else:
                 x = data[var]
-            
+
             fnc(x, **fnc_kwargs)
 
         if self.reference_data:
@@ -51,7 +50,7 @@ class ClimatePlotter:
                     x = data.sel(level=lvl)[var]
                 else:
                     x = data[var]
-                
+
                 fnc(x, **fnc_kwargs)
 
         if self.reference_data:
@@ -60,9 +59,11 @@ class ClimatePlotter:
                 label = model_name
                 fpath = model_path + f"/{data_path}.nc"
                 fnc(self.model_metrics[model_name], **fnc_kwargs)
-            
+
     def plot_annual_cycle(self):
         # This method plots the annual cycle of the model runs and reference data
-        
+
         file_path = "annual_cycle/data.nc"
-        self.iter_data(self.compute_annual_cycle, file_path, fnc_kwargs={'var': 'temperature'})
+        self.iter_data(
+            self.compute_annual_cycle, file_path, fnc_kwargs={"var": "temperature"}
+        )

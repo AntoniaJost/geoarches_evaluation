@@ -1,0 +1,13 @@
+anomaly_kde:
+  target: AnomalyKDE
+  params:
+    variables: 
+      - [temperature, 850]
+      - [10m_u_component_of_wind, null]
+      - [specific_humidity, 700]
+    use_lat_weighting: weatherbench
+    latitude: 181
+    figsize: [12, 6]
+    dpi: 150
+    linewidth: 2
+    base_period: [1993, 2010]

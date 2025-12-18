@@ -1,5 +1,5 @@
 #!/bin/sh
-#SBATCH --job-name=AW-M-1-aimip-interpolgt
+#SBATCH --job-name=AWM0-aimip-interpolgt
 #SBATCH --account=bk1450
 #SBATCH --qos=normal
 #SBATCH --partition=gpu
@@ -26,15 +26,15 @@ export CUDA_VISIBLE_DEVICES=0,1,2,3
 # cdge 
 
 ######### ArchesWeatherDet #########
-name="AW-M-1-aimip-w_forcings-interpolgt"
-aimip_name="AW-M-1-aimip-w_forcings-interpolgt"
+name="AWM0-aimip-interpolgt"
+aimip_name="AWM0-aimip-interpolgt"
 echo "Running on ${SLURM_JOB_NUM_NODES} nodes with ${SLURM_CPUS_PER_TASK} CPUs per task."
 echo "Using ${SLURM_GPUS_PER_NODE} GPUs."
 srun --cpu-bind=none --mem-bind=none --mem=0  --cpus-per-task=8 python3 rollout.py \
     ++model_name=${name} \
     ++aimip.aimip_name=${aimip_name} \
     '++aimip.continue_rollout=False' \
-    '++aimip.member="avg"' \
+    '++aimip.member="0"' \
     '++aimip.sst_scenario="0"' \
     '++start_timestamp="1978-10-01T00:00"' \
     '++end_timestamp="2025-12-31T00:00"' \

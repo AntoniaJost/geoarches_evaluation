@@ -1,0 +1,15 @@
+lat_lon_avg:
+  target: XYPlot
+  params:
+    x: "longitude"
+    y: "latitude"
+    time: ["average_time"]
+    variables: 
+      - ["sea_ice_cover", Null]
+      #- ["sea_surface_temperature", Null]
+      #- ["2m_temperature", Null]
+      #- ["10m_u_component_of_wind", Null]
+      #- ["temperature", 850]
+      #- ["specific_humidity", 850]
+    latitude: 181
+    plot_type: "variable"

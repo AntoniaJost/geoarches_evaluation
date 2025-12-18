@@ -1,0 +1,13 @@
+spectrum:
+  target: RadialSpectrum
+  params: 
+    reference_years: [1979, 2024]
+    latitude: 181
+    variables: 
+      - [mean_sea_level_pressure, null]
+      - [specific_humidity, 850]
+      - [geopotential, 500]
+    use_lat_weighting: weatherbench
+    figsize: [10, 8]
+    dpi: 150    
+    linewidth: 2
