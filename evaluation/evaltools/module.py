@@ -56,6 +56,124 @@ class GeoClimate:
             metric.evaluate(self.data_containers)
 
 
+class CmorDataContainer:
+    variable_names = {   
+            "hus": "specific_humidity",
+            "psl": "sea_level_pressure",
+            "ta:": "air_temperature",
+            "tas": "surface_air_temperature",
+            "tos": "sea_surface_temperature",
+            "ua": "eastward_wind",
+            "uas": "eastward_near_surface_wind",
+            "vas": "northward_near_surface_wind",
+            "va": "northward_wind",
+            "zg": "geopotential_height"}
+    
+
+    def __init__(
+            self, label, path_to_monthly_data=None, path_to_daily_data=None, 
+            variable_names=None):
+        """
+        This container loads cmorized data and provides functionality 
+        to load and yield data. 
+
+        Returns:
+            _type_: _description_
+        """
+
+        print("#" * 72)
+        print("Initializing CmorDataContainer for ", label)
+        assert path_to_monthly_data is not None or path_to_daily_data is not None, \
+        "At least one of path_to_monthly_data or path_to_daily_data must be provided."
+
+        if path_to_daily_data is not None:
+            self.load_daily_data()
+        if path_to_monthly_data is not None:
+            self.load_monthly_data()
+
+        if variable_names is not None:
+            self.variable_names = variable_names
+        
+        self.path_to_monthly_data = path_to_monthly_data
+        self.path_to_daily_data = path_to_daily_data
+
+        print("Initialized CmorDataContainer for ", label)
+        print("#" * 72)
+
+
+    def load_monthly_data(self):
+        """
+            Loads monthly data.
+        """
+        assert self.path_to_monthly_data is not None, \
+        "path_to_monthly_data must be provided to load monthly data."
+
+        print("--> Loading monthly data from:", self.path_to_monthly_data)
+
+
+        fpaths = glob(self.path_to_monthly_data + "/*.nc", recursive=True)
+        fpaths.sort()
+
+        # Data is given per variable
+        data_vars = {}
+        for var_short, var_name in self.variable_names.items():
+            var_fpaths = [f for f in fpaths if f"/{var_short}/" in f]
+            print(f"... {var_name} from:", var_fpaths, " ...", end=" ")
+            data_vars[var_name] = xr.open_mfdataset(var_fpaths, combine="by_coords")
+            print("Done")
+        print("--> Finished loading monthly data.")
+        
+        
+        self.monthly_data = data_vars
+
+    def load_daily_data(self):
+        """
+            Loads daily data.
+        """
+
+        assert self.path_to_daily_data is not None, \   
+        "path_to_daily_data must be provided to load daily data."
+
+        print("--> Loading daily data from:", self.path_to_daily_data)
+        fpaths = glob(self.path_to_daily_data + "/*.nc", recursive=True)
+        fpaths.sort()
+
+        # Data is given per variable
+        data_vars = {}
+        for var_short, var_name in self.variable_names.items():
+            var_fpaths = [f for f in fpaths if f"/{var_short}/" in f]
+            print(f"... {var_name} from:", var_fpaths, " ...", end=" ")
+            data_vars[var_name] = xr.open_mfdataset(var_fpaths, combine="by_coords")
+            print("Done")
+
+        print("--> Finished loading daily data.")
+        self.daily_data = data_vars
+
+    def get_variable_data(self, variable_name, frequency="monthly"):
+        """
+        Yields data for the specified variable name and frequency.
+        Parameters:
+        variable_name (str): Name of the variable to retrieve.
+        frequency (str): Frequency of the data ("monthly" or "daily").
+        Returns:
+        xarray.DataArray: Data for the specified variable.
+        """
+
+        if frequency == "monthly":
+            assert hasattr(self, "monthly_data"), \
+            "Monthly data not loaded. Please load monthly data first."
+            return self.monthly_data[variable_name]
+        elif frequency == "daily":
+            assert hasattr(self, "daily_data"), \
+            "Daily data not loaded. Please load daily data first."
+            return self.daily_data[variable_name]
+        else:
+            raise ValueError("Frequency must be either 'monthly' or 'daily'.")
+    
+
+        
+
+
 class DataContainer:
     """
     Class to load and hold climate data from NetCDF files
