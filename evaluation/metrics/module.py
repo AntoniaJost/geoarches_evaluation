@@ -1,10 +1,10 @@
 import os
 from matplotlib import gridspec
-from matplotlib.colors import TwoSlopeNorm
+from matplotlib.colors import TwoSlopeNorm, CenteredNorm
 from sympy import use
 from metrics import functional
 
-from metrics.functional import timeseries, frequency_domain, kernel_density_estimation
+from metrics.functional import timeseries, frequency_domain, kernel_density_estimation, utils
 from plot.timeseries import plot_timeseries, get_xlabel_multiplier
 from omegaconf import ListConfig
 from plot.spatial import plot_variable
@@ -59,7 +59,12 @@ class ClimateMetric:
         dpi=150,
         base_period=None,
         output_path=".",
-    ):
+        fontdict=None
+    ):  
+        
+        if fontdict is not None:
+            self.fontdict.update(fontdict)
+            
         self.variables = variables
         self.use_lat_weighting = use_lat_weighting
         self.latitude = latitude
@@ -76,6 +81,11 @@ class ClimateMetric:
         )
 
         self.output_path = output_path
+
+    def rmse(self, data1, data2):
+        rmse =  np.sqrt(((data1 - data2) ** 2).mean()).item()
+        print(rmse)
+        return rmse
 
     def compute(self, data):
         pass
@@ -98,6 +108,7 @@ class SpatialMetric(ClimateMetric):
         dpi=150,
         base_period=None,
         output_path=".",
+        fontdict=None
     ):
         super().__init__(
             variables,
@@ -107,6 +118,7 @@ class SpatialMetric(ClimateMetric):
             dpi,
             base_period,
             output_path,
+            fontdict=fontdict
         )
 
         self.time = time
@@ -114,7 +126,7 @@ class SpatialMetric(ClimateMetric):
         self.y = y
 
     def select_time(self, data, time):
-        if time == "average_time":
+        if time == "annual":
             data = data.mean(dim="time")
         elif time in ["DJF", "MAM", "JJA", "SON"]:
             data = data.sel(time=data["time.season"] == time)
@@ -135,15 +147,18 @@ class XYPlot(SpatialMetric):
         self,
         variables,
         plot_type="contour",
-        time="all",
+        time="annual",
         x="latitude",
         y="longitude",
         use_lat_weighting="weatherbench",
         latitude=None,
         figsize=(10, 6),
         dpi=150,
+        diverging_cmap="bwr",
+        sequential_cmap="PuBu",
         base_period=None,
         output_path=".",
+        fontdict=None
     ):
         super().__init__(
             variables,
@@ -156,13 +171,18 @@ class XYPlot(SpatialMetric):
             dpi=dpi,
             base_period=base_period,
             output_path=output_path,
+            fontdict=fontdict
         )
         self.plot_type = plot_type
         self.output_path = output_path + f"/{x}_{y}_plots"
+        self.sequential_cmap = sequential_cmap
+        self.diverging_cmap = diverging_cmap
         os.makedirs(self.output_path, exist_ok=True)
+    
 
     def visualize_on_ax(
-        self, fig, ax, data, variable_name, time, model_label, norm=None, infotext=""
+        self, fig, ax, data, variable_name, time, 
+        model_label, cmap, norm=None, infotext=""
     ):
         # transpose data such that x is on the horizontal axis and y on the vertical axis
         data = data.transpose(self.y, self.x)
@@ -189,12 +209,12 @@ class XYPlot(SpatialMetric):
                 data,
                 fname=f"{self.y}_{self.x}_plot_{time}_{variable_name}_{model_label}.png",
                 output_path=self.output_path,
-                title=f"{model_label} - {time}, Variable: {variable_name}",
+                title="",#f"{model_label} - {time}, Variable: {variable_name}",
                 ax=None,
                 cbar_label=self.units[variable_name]
                 if variable_name in self.units
                 else "",
-                cmap="coolwarm",
+                cmap=cmap,
                 fontdict=self.fontdict,
                 infotext=infotext,
                 norm=norm,
@@ -202,16 +222,23 @@ class XYPlot(SpatialMetric):
 
             return
         elif self.plot_type == "contour":
+                
             CS = ax.contourf(
                 data[self.x],
                 data[self.y],
                 data,
                 cmap="coolwarm",
                 interpolation="bilinear",
-                levels=10,
+                levels=20,
             )
+
             CS2 = ax.contour(CS, levels=CS.levels, colors="k")
             plt.gca().set_aspect("auto")
+            if self.y == "level":
+                ax.invert_yaxis()
+                # also invert the data for contour lines
+                data.values = data.values[-1::-1, :]
+                
             cbar = plt.colorbar(
                 CS,
                 ax=ax,
@@ -232,10 +259,10 @@ class XYPlot(SpatialMetric):
                 which="major",
                 labelsize=self.fontdict["xtick.labelsize"],
             )
-        ax.set_title(
-            model_label + " - " + time_title + ", Variable: " + variable_name,
-            fontsize=self.fontdict["axes.titlesize"],
-        )
+        #ax.set_title(
+        #    model_label + " - " + time_title + ", Variable: " + variable_name,
+        #    fontsize=self.fontdict["axes.titlesize"],
+        #)
         output_path = self.output_path + f"/{self.y}_{self.x}_plot_{time}_{variable_name}_{model_label}.png"
         
         plt.savefig(
@@ -250,13 +277,14 @@ class XYPlot(SpatialMetric):
         return fig, ax
 
     def evaluate(self, model_containers):
-        if "era5" in [model.label.lower() for model in model_containers]:
+        if any ([model.is_reference for model in model_containers]):
             ground_truth_data_index = [
                 i
                 for i, model in enumerate(model_containers)
-                if model.label.lower() == "era5"
+                if model.is_reference
             ][0]
             ground_truth_data = model_containers[ground_truth_data_index].data
+            model_reference_label = model_containers[ground_truth_data_index].label
         else:
             ground_truth_data = None
         self.time = self.time if isinstance(self.time, ListConfig) else list(self.time)
@@ -275,12 +303,13 @@ class XYPlot(SpatialMetric):
                 ]
                 data = data.mean(dim=dims_to_mean)
 
-                if model_data.label.lower() != "era5" and ground_truth_data is not None:
+                if model_data.label.lower() != model_reference_label.lower() and ground_truth_data is not None:
                     print(
-                        f"Bias correcting model {model_data.label} using ERA5...")
+                        f"Difference Map {model_data.label} using {model_reference_label}...")
                     gt_data = self.select_time(ground_truth_data, time)
                     gt_data = gt_data.mean(dim=dims_to_mean)
                     diff_data = data - gt_data
+                    
                 else:
                     diff_data = None
 
@@ -294,30 +323,42 @@ class XYPlot(SpatialMetric):
                     if lvl is None:
                         plot_data = data[variable_name]
                     else:
+                        print(data)
                         plot_data = data[variable_name].sel(level=lvl)
                     self.visualize_on_ax(
-                        fig, ax, plot_data, variable_name, time, model_label=model_data.label
+                        fig, ax, plot_data, variable_name, time, model_label=model_data.label, cmap=self.sequential_cmap
                     )
 
                     if diff_data:
                         print(
-                            f"Visualizing Bias XY plot for variable: {short_var_name}")
+                            f"Visualizing Difference Map XY plot for variable: {short_var_name}")
                         fig, ax = self.create_figure()
                         if lvl is None:
                             plot_data = diff_data[variable_name]
+                            rmse = self.rmse(
+                                data[variable_name].values,
+                                gt_data[variable_name].values
+                            )
                         else:
                             plot_data = diff_data[variable_name].sel(level=lvl)
-                        norm = TwoSlopeNorm(vcenter=0)
+                            rmse = self.rmse(
+                                data[variable_name].sel(level=lvl).values,
+                                gt_data[variable_name].sel(level=lvl).values
+                            )
+
+                        norm = CenteredNorm(vcenter=0)
+
                         self.visualize_on_ax(
                             fig,
                             ax,
                             plot_data,
                             short_var_name,
                             time,
-                            model_label=model_data.label + " Bias",
+                            cmap=self.diverging_cmap,
+                            model_label=model_data.label + " diffmap",
                             norm=norm,
-                            infotext="mean=" +
-                            f"{float(plot_data.mean().values):.2f}",
+                            infotext="Mean=" +
+                            f"{float(plot_data.mean().values):.2f}, RMSE={rmse:.2f}",
                         )
 
 
@@ -448,10 +489,10 @@ class AnnualCycle(TimeSeries):
                     xtick_labels=annual_cycle.time.values,
                     color=model_containers[i].data_color,
                 )
-                ax.set_title(f"Annual Cycle - {short_var_name} - {lbl}")
                 ax.set_xlabel("Time")
+                ax.set_ylabel(f"{self.units.get(variable_name, '')}")
             plt.grid()
-            plt.legend()
+            plt.legend(fontsize=self.fontdict["axes.labelsize"])
             plt.savefig(self.output_path + f"/annual_cycle_{short_var_name}.png")
 
 class AnomalyKDE(TimeSeries):
@@ -517,7 +558,7 @@ class AnomalyKDE(TimeSeries):
                     color=color,
                     linewidth=self.linewidth,
                 )
-                ax0.set_title(f"KDE - {short_var_name}")
+                #ax0.set_title(f"KDE - {short_var_name}")
                 ax0.set_xlabel("Density")
 
             ax1 = fig.add_subplot(gs[1])
@@ -535,7 +576,7 @@ class AnomalyKDE(TimeSeries):
                     xtick_labels=ano.time.values,
                     color=model_containers[i].data_color,
                 )
-            ax1.set_title(f"Annual Cycle - {short_var_name}")
+            #ax1.set_title(f"Annual Cycle - {short_var_name}")
             ax1.set_xlabel("Time")
             ax1.grid()
             ax1.legend()
@@ -572,6 +613,7 @@ class RadialSpectrum(ClimateMetric):
         )
         ax.invert_xaxis()
         ax.set_xlabel("Wavelength (km)")
+        # Mirror graph 
         ax.grid(which="both", linestyle="-.", linewidth=0.2)
 
     def compute_radial_spectrum(self, data):
@@ -621,7 +663,6 @@ class RadialSpectrum(ClimateMetric):
                 f"Visualizing radial spectrum for variable: {short_var_name}")
             fig, ax = plt.subplots(figsize=self.figsize, dpi=self.dpi)
             plt.rcParams.update(self.fontdict)
-            ax.set_title(f"{short_var_name}")
             for i, (lbl, spectra) in enumerate(radial_spectra.items()):
                 for j, (year, spectrum) in enumerate(spectra.items()):
                     color = list(model_containers[i].data_color)
@@ -639,7 +680,7 @@ class RadialSpectrum(ClimateMetric):
                     )
             ax.set_xlabel("Wavenumber")
             ax.set_ylabel("Power Spectral Density")
-            ax.legend()
+            ax.legend(fontsize=self.fontdict["axes.labelsize"])
             output_path = self.output_path + \
                 f"/radial_spectrum_{short_var_name}.png"
             plt.savefig(output_path)
@@ -719,7 +760,7 @@ class SouthernOscillationIndex(TimeSeries):
             plot_timeseries(
                 x=soi_index,
                 xticks=xticks,
-                title="Southern Oscillation Index",
+                title="",
                 ylabel="SOI Index",
                 xlabel="Time",
                 label=model_data.label,
@@ -743,7 +784,6 @@ class SouthernOscillationIndex(TimeSeries):
 
             fig, ax = plt.subplots(figsize=self.figsize, dpi=self.dpi)
             plt.rcParams.update(self.fontdict)
-            ax.set_title("Southern Oscillation Index - Power Spectral Density")
             for i, (lbl, freq_domain) in enumerate(frequencies.items()):
                 color = list(model_containers[i].data_color)
                 ax.plot(
@@ -759,3 +799,119 @@ class SouthernOscillationIndex(TimeSeries):
             ax.grid()
             plt.savefig(output_path)
             plt.close()
+
+
+class CorrelationAnalysis(ClimateMetric):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def compute_correlation(self, data_x, data_y):
+        return data_x.corr(data_y, dim=['latitude', 'longitude']) 
+
+    def evaluate(self, model_containers):
+        print("-" * 72)
+        print()
+
+        output_path = self.output_path + "/correlation_analysis"
+        os.makedirs(output_path, exist_ok=True)
+
+        for model in model_containers:
+            print(f"### Processing model: {model.label} ###")
+            data = model.data
+
+            for var_x, var_y in self.variables:
+                print(f"-> [{var_x} / {var_y}]")
+                data_x = data[var_x].mean(dim="time")
+                data_y = data[var_y].mean(dim="time")
+
+                correlation_coeffs = self.compute_correlation(data_x, data_y)
+
+                print(f"-> Visualizing correlation for [{var_x} / {var_y}]")
+                fig, ax = self.create_figure()
+                plot_variable(
+                    correlation_coeffs,
+                    fname=f"correlation_{var_x}_vs_{var_y}_{model.label}.png",
+                    output_path=output_path,
+                    title=f"",
+                    ax=ax,
+                    cbar_label="Correlation Coefficient",
+                    cmap="coolwarm",
+                    fontdict=self.fontdict,
+                )
+                print("")
+
+
+class RegressionAnalysis(ClimateMetric):
+    def __init__(
+            self, 
+            variables,
+            use_lat_weighting="weatherbench", 
+            latitude=None, 
+            figsize=(10, 6), 
+            dpi=150, 
+            base_period=None, 
+            output_path="."
+    ):
+        """_summary_
+
+        Args:
+            variables (_type_): Pair of variables to regress.
+            use_lat_weighting (str, optional): _description_. Defaults to "weatherbench".
+            latitude (_type_, optional): _description_. Defaults to None.
+            figsize (tuple, optional): _description_. Defaults to (10, 6).
+            dpi (int, optional): _description_. Defaults to 150.
+            base_period (_type_, optional): _description_. Defaults to None.
+            output_path (str, optional): _description_. Defaults to ".".
+        """
+        super().__init__(variables, use_lat_weighting, latitude, figsize,       
+                         dpi, base_period, output_path)
+        
+
+    def create_figure(self):
+        fig, ax = plt.subplots(figsize=self.figsize, dpi=self.dpi)
+        return fig, ax
+        
+    def regress_variables(self, data_x, data_y):
+        return utils.compute_regression_coefficients_2d(data_x, data_y)
+
+    def evaluate(self, model_containers):
+        print("-" * 72)
+        print()
+
+        output_path = self.output_path + "/regression_analysis"
+        os.makedirs(output_path, exist_ok=True)
+
+        for model in model_containers:
+            print(f"### Processing model: {model.label} ###")
+            data = model.data
+
+            for var_x, var_y in self.variables:
+                print(f"-> [{var_x} / {var_y}]")
+                data_x = data[var_x].mean(dim=["time"])
+            
+                data_y = data[var_y].mean(dim=["time"])
+
+                regression_coeffs = self.regress_variables(data_x, data_y)
+
+                print(f"-> Visualizing regression slope for [{var_x} / {var_y}]")
+
+            infotext = f"slope={regression_coeffs['slope'].mean():.2f}\n" + \
+                       f"intercept={regression_coeffs['intercept'].mean():.2f}\n" + \
+                       f"p_value={regression_coeffs['p_value'].mean():.2f}\n" + \
+                       f"r_value={regression_coeffs['r_value'].mean():.2e}"
+            
+            norm = TwoSlopeNorm(vcenter=0)
+            plot_variable(
+                regression_coeffs['slope'],
+                fname=f"regression_{var_x}_vs_{var_y}_{model.label}.png",
+                output_path=output_path,
+                title="",
+                ax=None,
+                cbar_label="Regression Slope",
+                cmap="coolwarm",
+                fontdict=self.fontdict,
+                infotext=infotext,
+                norm=norm,
+            )
+            print("")
+        

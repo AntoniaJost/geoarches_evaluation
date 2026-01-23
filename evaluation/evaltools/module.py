@@ -26,7 +26,7 @@ class GeoClimate:
         
             container = DataContainer(**v)
 
-            container._load_data()
+            container._load_data_from_paths()
             self.data_containers.append(container)
 
     def _init_metrics(self, metric_cfgs):
@@ -35,17 +35,20 @@ class GeoClimate:
         metric_cfgs = metric_cfgs["metrics"]
         for metric_name, metric_cfg in metric_cfgs.items():
             print("Adding metric:", metric_name)
-            metric = getattr(metric_modules, metric_cfg["target"])(
-                output_path=self.output_path,
-                **metric_cfg["params"]
-            )
+            #metric = getattr(metric_modules, metric_cfg["target"])(
+            #    output_path=self.output_path,
+            #    **metric_cfg["params"]
+            #)
+            metric = instantiate(metric_cfg, output_path=self.output_path)
             self.metric_objects[metric_name] = metric
+
 
     def evaluate(self, target_metrics=None):
         if target_metrics is None:
             metrics = self.metric_objects
         else:
-            print(self.metric_objects)
+            print(target_metrics)
+            print(self.metric_objects.keys())
             metrics = {m: self.metric_objects[m] for m in target_metrics}
 
         for metric in metrics.values():
@@ -60,7 +63,7 @@ class DataContainer:
 
     def __init__(
         self,
-        path,
+        path_list,
         label,
         data_color=np.zeros(
             3,
@@ -71,6 +74,8 @@ class DataContainer:
         filename_filters=None,
         dimension_indexers=None,
         time_range=None,
+        assign_coords: dict =None,
+        is_reference: bool = False,
     ):
         """
         Initializes the DataContainer with the given parameters.
@@ -82,28 +87,23 @@ class DataContainer:
         dimension_indexers (dict, optional): Dictionary to rename dimensions in the dataset.
         """
 
-        self.path = path
+        self.path_list = list(path_list)
         self.label = label
         self.filename_filters = filename_filters
         self.data_color = data_color
         self.dimension_indexers = dimension_indexers
         self.time_range = time_range
+        self.assign_coords = assign_coords
+        self.is_reference = is_reference
 
-    def _load_data(self):
-        fpaths = glob(self.path + "/*.nc")
+    def _load_data_from_path(self, path):
+        fpaths = glob(path + "/*.nc")
         fpaths.sort()
         if self.filename_filters is not None:
             fpaths = [f for f in fpaths if any(nf in f for nf in self.filename_filters)]
 
-        print("Opening data from:", self.path, " ...", end=" ")
-        if "era5" in self.path.lower() and len(self.filename_filters) > 1:
-            # The times are not monotonically increasing in ERA5 data
-            data = xr.open_mfdataset(
-                fpaths,
-                combine="nested",
-            )
-        else:
-            data = xr.open_mfdataset(fpaths, combine="by_coords")
+        print("Opening data from:", path, " ...", end=" ")
+        data = xr.open_mfdataset(fpaths, combine="by_coords")
         print("Done")
 
         if data.latitude[0] < data.latitude[-1]:  # if latitude is descending
@@ -114,11 +114,31 @@ class DataContainer:
         )  # Roll longitude to match data
 
         if self.dimension_indexers is not None:
+            print(data)
             data = data.rename(**self.dimension_indexers)
+            print(data)
+
+        if self.assign_coords is not None:
+            for key, value in self.assign_coords.items():
+                print(f"Assigning coords {key}: {value}")
+                data[key] = value
 
         if self.time_range is not None:
             data = data.sel(
                 time=slice(self.time_range["start"], self.time_range["end"])
             )
 
-        self.data = data
+        return data
+    
+    def _load_data_from_paths(self):
+        datasets = [self._load_data_from_path(p) for p in self.path_list]
+
+        if len(datasets) == 1:
+            self.data = datasets[0]
+            return
+        else:
+            print("Calculating member mean from multiple paths...")
+            self.data = xr.concat(datasets, dim="member").mean("member")
+            print("Calculating member std from multiple paths...")
+            self.std = xr.concat(datasets, dim="member").std("member")
+            return
