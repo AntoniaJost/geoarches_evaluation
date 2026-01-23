@@ -49,8 +49,10 @@ def plot_variable(
     ax.coastlines()
     ax.add_feature(cfeature.BORDERS, linestyle=":")
     ax.set_title(title)
-    ax.gridlines(draw_labels=True, dms=True, x_inline=False, y_inline=False)
-
+    gl = ax.gridlines(draw_labels=True, dms=True, x_inline=False, y_inline=False, linewidth=0.5, alpha=0.9)
+    gl.xlabels_top = False
+    gl.ylabels_left = False
+    
     print("Data Shape: ", x.shape)
     if x.shape[0] == 1:
         x = np.squeeze(x, axis=0)
@@ -66,7 +68,7 @@ def plot_variable(
 
     ax.text(
         0.5,
-        -0.1,
+        1.1,
         infotext,
         fontsize=10,
         ha="center",
@@ -91,7 +93,7 @@ def plot_variable(
         orientation="horizontal",
         pad=0.1,
         extend="both",
-        shrink=0.7,
+        shrink=0.6,
         aspect=30,
         norm=norm,
     )

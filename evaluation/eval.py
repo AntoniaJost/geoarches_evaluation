@@ -15,7 +15,7 @@ def main(cfg):
     # Load the data
 
     pp(cfg)
-    evaluator = GeoClimate(data=cfg["data"], metric_cfgs=cfg["metric_cfgs"], output_path=cfg["output_path"])
+    evaluator = GeoClimate(data=cfg["data"], metric_cfgs=cfg["metrics"], output_path=cfg["output_path"])
     evaluator.evaluate(cfg["target_metrics"] if "target_metrics" in cfg else None)
 
 

@@ -1,0 +1,10 @@
+lat_lon_inst:
+  _target_: metrics.module.XYPlot
+  x: "longitude"
+  y: "latitude"
+  time: "2023-12-31:00:00"
+  variables:
+    - ["sea_surface_temperature", Null]
+
+  latitude: 181
+  plot_type: imshow

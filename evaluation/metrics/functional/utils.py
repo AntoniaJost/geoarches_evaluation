@@ -1,5 +1,62 @@
 import xarray as xr
 
+import numpy as np
+from scipy import stats
+
+
+def compute_regression_coefficients_2d(x, y):
+    """
+    This function computes the linear regression coefficients (slope and intercept)
+    between two 2D variables over their flattened spatial dimensions.
+    It handles NaN values by ignoring them in the regression calculation.
+    The function returns a dictionary with the slope and intercept arrays.
+    args: 
+    x: xr.Dataset containing the first variable
+    y: xr.Dataset containing the second variable
+    returns:
+    dict: dictionary containing slope and intercept arrays
+    """
+
+    x = x.values
+    data_shape = x.shape # we need to remember the spatial shape
+    x = x.flatten()
+    y = y.values.flatten()
+    nvals = len(y)
+
+    # Remove NaN values
+    mask = ~np.isnan(x) & ~np.isnan(y)
+    x = x[mask]
+    y = y[mask]
+
+
+    # shape of data1 and data2 should be (N,)
+
+    if len(x) == 0 or len(y) == 0:
+        print("No valid data points for regression.")
+        return None
+
+    slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)
+
+    # insert nan back into slope and intercept if there were missing values
+    slope_full = np.full(nvals, np.nan)
+    intercept_full = np.full(nvals, np.nan)
+    slope_full[mask] = slope
+    intercept_full[mask] = intercept
+
+    # Reshape back to original spatial dimensions if needed
+    slope = slope_full.reshape(data_shape)
+    intercept = intercept_full.reshape(data_shape)
+    
+    result = {
+        'slope': slope,
+        'intercept': intercept,
+        'r_value': r_value,
+        'p_value': p_value,
+        'std_err': std_err
+    }
+
+    return result
+
 
 def remove_annual_cycle(data, groupby):
     """
