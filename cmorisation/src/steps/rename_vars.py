@@ -19,12 +19,18 @@ class RenameVarsStep(Step):
         os.makedirs(out_base, exist_ok=True)
 
         # config mappings
+        aimip      = cfg.get('aimip', True)
         var_map    = cfg.get('var_mapping', {})
         unit_map   = cfg.get('unit_mapping', {})
         levels     = cfg.get('pressure_levels', [])
         zg_to_500  = cfg.get('zg_to_500', False)
         time_slice = cfg.get('time_slice_daily', None)
         self.logger.debug(f"[RenameVarsStep] Time slice is: {time_slice}")
+
+        # reduce var_map to contain only aimip variables if aimip is set to True
+        if aimip is True:
+            var_map.pop("vertical_velocity", None)
+            var_map.pop("sea_ice_cover", None)
 
         for in_dir in input_dirs:
             # determine processing type from folder name
@@ -118,6 +124,14 @@ class RenameVarsStep(Step):
                         else:
                             conv = float(unit_map.get('tos', 273.15))  # default: subtract 273.15
                             ds['tos'] = ds['tos'] - conv
+
+                    # Convert units for sea ice cover (from number to percent)
+                    if 'siconc' in ds:
+                        if ds.sizes.get('time', 0) == 0:
+                            self.logger.warning(f"{RED} [RenameVarsStep] 'siconc' has no time in {fp}; skipping var")
+                        else:
+                            conv = float(unit_map.get('siconc', 100))  # default: times 100
+                            ds['siconc'] = ds['siconc'] * 100
 
                     # if pressure levels are specified, retain only those levels
                     if 'plev' in ds.dims and levels:
