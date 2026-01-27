@@ -26,7 +26,8 @@ TIMESPANS_DAILY=(
   '["2010-10-01","2012-12-31"]'
   '["2013-01-01","2014-12-31"]'
 ) # timespan(s) for which daily data is wanted. Has to be of format ["start date", "end date"]. if aimip=true timespan will be overwritten by aimip requirements
-AIMIP="false" # "true" or "false"
+AIMIP="true" # "true" or "false"
+export RUN_DIR="/work/bk1450/a270220/cmorised_awm/${MODEL_TAG}" # working directory where all output will be stores
 ### ----------------------------
 
 if [[ "${AIMIP,,}" == "true" ]]; then # spaces are important, don't change!!
@@ -41,8 +42,6 @@ else
   ZG_TO_500="false" # decide if zg (geopotential height) shall be reduced to only contain 500hPa
   LEVELS="[50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000]"
 fi
-
-export RUN_DIR="/work/bk1450/a270220/cmorised_awm/${MODEL_TAG}"
 
 mkdir -p "${RUN_DIR}/logs" \
          "${RUN_DIR}/1_means/daily_means" \
