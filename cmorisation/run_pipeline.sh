@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH --job-name=w_cmor
-#SBATCH --time=05:00:00
+#SBATCH --job-name=FR19.1-cmor
+#SBATCH --time=08:00:00
 #SBATCH --partition=compute
 #SBATCH --account=bk1450
 #SBATCH --ntasks=1
@@ -15,18 +15,18 @@ set -euo pipefail
 
 ### ----------------------------
 # IDEALLY, ALL YOU NEED TO TOUCH IS WITHIN THIS BLOCK. ADJUST ACCORDING TO YOUR DATA & STRUCTURE
-
-MODEL_TAG="ArchesWeatherGen" # part of folder path of input data
+MODEL_TAG="AWGen-unforced-forced-residuals" # part of folder path of input data
 NAME="ArchesWeatherGen" #"ArchesWeather", "ArchesWeatherGen"
-ENSEMBLE="r1i1p1f1"
-TAG="ArchesWeatherGen_${ENSEMBLE}_gn" # part of the input filename, without "day_"
-INPUT_DIR="/work/bk1450/b383170/rollouts/ArchesWeatherGen/sst_0k/daily/member_1"
-TIMESPAN="2010-2019" # timespan of your input files
+MEMBER="1" # typically 1 to 5
+ENSEMBLE="r${MEMBER}i1p1f1"
+TAG="AWGen-unforced-forced-residuals_${ENSEMBLE}_gn" # part of the input filename, without "day_"
+INPUT_DIR="/work/bk1450/b383170/rollouts/AWGen-unforced-forced-residuals/1978-10-01/member_${MEMBER}"
+TIMESPAN="1978-2014" # timespan of your input files
 TIMESPANS_DAILY=(
-  '["2010-10-01","2012-12-31"]'
-  '["2013-01-01","2014-12-31"]'
+  '["1978-10-01 ","2024-12-31"]'
+  # '["2013-01-01","2014-12-31"]'
 ) # timespan(s) for which daily data is wanted. Has to be of format ["start date", "end date"]. if aimip=true timespan will be overwritten by aimip requirements
-AIMIP="true" # "true" or "false"
+AIMIP="false" # "true" or "false"
 export RUN_DIR="/work/bk1450/a270220/cmorised_awm/${MODEL_TAG}" # working directory where all output will be stores
 ### ----------------------------
 
