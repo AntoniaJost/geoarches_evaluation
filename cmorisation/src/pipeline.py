@@ -34,7 +34,7 @@ def main():
 
     # define processing steps (order is important!)
     steps = [
-        RenameVarsStep( cfg.get('rename_vars'), logger),
+        RenameVarsStep(cfg.get('rename_vars'), logger),
         SplitVarsStep(cfg.get('split_vars'), logger),
         CmoriseStep(cfg.get('cmorise'), logger),
     ]

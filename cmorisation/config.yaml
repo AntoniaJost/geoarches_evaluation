@@ -1,7 +1,7 @@
 general:
   work_dir: "${RUN_DIR}" 
-  repo_dir: "/work/bk1450/a270220/repos/geoarches_evaluation/cmorisation"
-  log_dir: "/work/bk1450/a270220/cmorised_awm/${MODEL_TAG}/logs"
+  repo_dir: "${REPO_DIR}"
+  log_dir: "${LOG_DIR}"
   log_level: "DEBUG"
   means_changed_path: "${RUN_DIR}/1_means/means_changed.json" 
   delete_intermediate_outputs: false # if true, everything besides final cmorised output gets deleted in the end
@@ -24,15 +24,18 @@ rename_vars:
     10m_v_component_of_wind: vas
     total_precipitation_6hr: pr
     mean_sea_level_pressure: psl
+    vertical_velocity: wap
+    sea_ice_cover: siconc
     land_sea_mask: sftlf
-    # vertical_velocity is not used atm, as it is not required for aimip
 
   unit_mapping:
-    pr: 86400.0 # conversion factor
-    tos: 273.15
-  pressure_levels: [1000, 850, 700, 500, 250, 100, 50]
+    pr: 86400.0 # conversion factor mm/day → kg/m²/s
+    tos: 273.15 # Kelvin → Celsius
+    siconc: 100 # to %
+  pressure_levels: ${LEVELS} #[1000, 850, 700, 500, 250, 100, 50]
   zg_to_500: ${ZG_TO_500} # decide if var zg (geopot. height) shall be reduced to only 500hPa (AIMIP requirement)
   time_slice_daily: ${TIMESPAN_DAILY}
+  aimip: ${AIMIP}
 
 split_vars:
   input_dir: "${general.work_dir}/2_renamed"
