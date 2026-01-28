@@ -131,7 +131,7 @@ class RenameVarsStep(Step):
                             self.logger.warning(f"{RED} [RenameVarsStep] 'siconc' has no time in {fp}; skipping var")
                         else:
                             conv = float(unit_map.get('siconc', 100))  # default: times 100
-                            ds['siconc'] = ds['siconc'] * 100
+                            ds['siconc'] = ds['siconc'] * conv
 
                     # if pressure levels are specified, retain only those levels
                     if 'plev' in ds.dims and levels:
