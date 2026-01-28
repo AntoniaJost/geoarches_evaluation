@@ -1,30 +1,37 @@
 #!/bin/bash
-#SBATCH --job-name=cmor_renu2.2
-#SBATCH --time=01:00:00
+#SBATCH --job-name=cmor_0k_m1-1978
+#SBATCH --time=06:00:00
 #SBATCH --partition=compute
 #SBATCH --account=bk1450
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=8
 #SBATCH --mem-per-cpu=24G
-#SBATCH --output=slurm_%x_%j.out
-#SBATCH --error=slurm_%x_%j.err
+#SBATCH --output=logs/slurm_%x_%j.out
+#SBATCH --error=logs/slurm_%x_%j.err
+#SBATCH --dependency=afterany:22210134  # replace with actual job ID if needed
 
-source /work/bk1450/a270220/aimip/bin/activate
+module load cdo/2.5.3-gcc-11.2.0 
+source ~/repositories/geoenv/bin/activate
+
+export ACCOUNT="b383170"
 
 set -euo pipefail
 
 # ADJUST THESE 5 VARS ACCORDING TO YOUR DATA & STRUCTURE
-MODEL_TAG="AWM-4_renu" # part of folder path of input data
-NAME="ArchesWeather" #"ArchesWeather"
-ENSEMBLE="r1i1p1f1"
+MODEL_TAG="ArchesWeatherGen" # part of folder path of input data
+NAME="ArchesWeatherGen" #"ArchesWeather"
+MEMBER=1  # member number of the ensemble you want to cmorise
+ENSEMBLE="r${MEMBER}i1p1f1"
+SST="0k"
 
-TAG="AWM-4_renu_${ENSEMBLE}_gn" # part of the input filename
-INPUT_DIR="/home/b/b383170/repositories/geoarches_evaluation/data/rollouts/AWM-4_renu/1978-10-01T00:00/sst_0/daily/member_0" 
+TAG="${MODEL_TAG}_${ENSEMBLE}_gn" # part of the input filename
+INPUT_DIR="/home/b/b383170/repositories/geoarches_evaluation/cmorisation/rollouts/${MODEL_TAG}/sst_${SST}/daily/member_${MEMBER}" # path to your input files
 TIMESPAN="1978-2025" # timespan of your input files
-TIMESPAN_DAILY='["2024-01-01", "2024-12-31"]' # timespan for which daily data is wanted. has to be of format ["start date", "end date"], cannot span multiple time frames, needs to be run twice. ["1978-10-01", "1979-12-31"], ["2024-01-01", "2024-12-31"]
+TIMESPAN_DAILY='["1978-10-01", "1979-12-31"]' # timespan for which daily data is wanted. has to be of format ["start date", "end date"], cannot span multiple time frames, needs to be run twice. ["1978-10-01", "1979-12-31"],
+#TIMESPAN_DAILY='["2024-01-01", "2024-12-31"]' # second run for 2024
 ZG_TO_500="true" # decide if zg (geopotential height) shall be reduced to only contain 500hPa
 
-export RUN_DIR="/work/bk1450/a270220/cmorised_awm/${MODEL_TAG}"
+export RUN_DIR="/home/b/b383170/repositories/geoarches_evaluation/cmorisation/rollouts/cmorised_aimip/${MODEL_TAG}/sst_${SST}/member_${MEMBER}"
 
 mkdir -p "${RUN_DIR}/logs" \
          "${RUN_DIR}/1_means/daily_means" \
@@ -58,7 +65,8 @@ else
   echo "Skipping monmean: ${MONTHLY_MEAN_FILE} already exists."
 fi
 
-python src/pipeline.py --config "${RUN_DIR}/config.yaml"
+python3 src/pipeline.py --config "${RUN_DIR}/config.yaml"
+
 echo "Done. Outputs under: ${RUN_DIR}"
 
 # In case you want to move your output to a different location
