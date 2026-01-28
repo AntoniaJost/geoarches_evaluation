@@ -16,17 +16,7 @@ pip install -r requirements.txt
 
 #### 2a. Edit `config.yaml`:
 
-* Add the path where your cloned respository lies (`repo_dir`).
-* Define the path where your data will be stored (```log_dir```). 
 * Adjust all params in the `cmorise.global_attributes` part according to your likings.
-
-The 2 minimum things you have to adjust here are:
-
-```yaml
-general:
-  repo_dir: "path/to/repository/"
-  log_dir: "where/you/want/your/results/to/be"
-```
 
 #### 2b. Edit `run_pipeline.sh`:
 
@@ -35,6 +25,7 @@ general:
 * Adjust ONLY:
   * ```MODEL_TAG```
   * ```NAME```
+  * ```MEMBER```  
   * ```ENSEBLME```
   * ```TAG```
   * ```INPUT_DIR```
@@ -42,6 +33,8 @@ general:
   * ```TIMESPANS_DAILY```
   * ```AIMIP```
   * ```RUN_DIR```
+  * ```REPO_DIR```
+  * ```LOG_DIR```
 
 Unless you want to run a specific / own configuration, there shouldn't be any need for touching any more code than this. 
 
