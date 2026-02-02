@@ -1,35 +1,36 @@
 #!/bin/bash
-#SBATCH --job-name=sst2.5-cmor
+#SBATCH --job-name=cmor-awm-sst4k-5
 #SBATCH --time=08:00:00
 #SBATCH --partition=compute
 #SBATCH --account=bk1450
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem-per-cpu=24G
-#SBATCH --output=slurm_%x_%j.out
-#SBATCH --error=slurm_%x_%j.err
+#SBATCH --output=logs/slurm_%x_%j.out
+#SBATCH --error=logs/slurm_%x_%j.err
 
-source /work/bk1450/a270220/aimip/bin/activate
-
+source /work/bk1450/b383170/geoenv/bin/activate
+module load cdo/2.5.3-gcc-11.2.0
 set -euo pipefail
 
 ### ----------------------------
 # IDEALLY, ALL YOU NEED TO TOUCH IS WITHIN THIS BLOCK. ADJUST ACCORDING TO YOUR DATA & STRUCTURE
-MODEL_TAG="ArchesWeatherGen_sst2" # part of folder path of input data
-NAME="ArchesWeatherGen" #"ArchesWeather", "ArchesWeatherGen"
+MODEL_TAG="ArchesWeather" # part of folder path of input data
+NAME="ArchesWeather" #"ArchesWeather", "ArchesWeatherGen"
 MEMBER="5" # typically 1 to 5
 ENSEMBLE="r${MEMBER}i1p1f1"
-TAG="ArchesWeatherGen_${ENSEMBLE}_gn" # part of the input filename, without "day_"
-INPUT_DIR="/work/bk1450/b383170/rollouts/ArchesWeatherGen/sst_2k/daily/member_${MEMBER}"
+SCENARIO="4k"
+TAG="${NAME}_${ENSEMBLE}_gn" # part of the input filename, without "day_"
+INPUT_DIR="/work/bk1450/b383170/eval/ArchesWeather/sst_${SCENARIO}/daily/member_${MEMBER}"
 TIMESPAN="1978-2025" # timespan of your input files
 TIMESPANS_DAILY=(
   '["1978-10-01 ","2025-01-01"]'
   # '["2013-01-01","2014-12-31"]'
 ) # timespan(s) for which daily data is wanted. Has to be of format ["start date", "end date"]. if aimip=true timespan will be overwritten by aimip requirements
-AIMIP="false" # "true" or "false"
-RUN_DIR="/work/bk1450/a270220/cmorised_awm/${MODEL_TAG}_mem${MEMBER}" # working directory where all output will be stores
-REPO_DIR="/work/bk1450/a270220/repos/geoarches_evaluation/cmorisation" # directory of the repository (important: with "cmorisation" folder!)
-LOG_DIR="/work/bk1450/a270220/cmorised_awm/${MODEL_TAG}/logs" # where you want your logs
+AIMIP="true" # "true" or "false"
+RUN_DIR="/work/bk1450/b383170/rollouts/cmorised_aimip/ArchesWeather/${SCENARIO}/mem${MEMBER}" # working directory where all output will be stores
+REPO_DIR="/work/bk1450/b383170/repositories/geoarches_evaluation/cmorisation" # directory of the repository (important: with "cmorisation" folder!)
+LOG_DIR="/work/bk1450/b383170/rollouts/cmorised_aimip/ArchesWeather/${SCENARIO}/mem${MEMBER}/logs" # where you want your logs
 ### ----------------------------
 
 if [[ "${AIMIP,,}" == "true" ]]; then # spaces are important, don't change!!
