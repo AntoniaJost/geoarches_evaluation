@@ -5,9 +5,9 @@ from sympy import use
 from metrics import functional
 
 from metrics.functional import timeseries, frequency_domain, kernel_density_estimation, utils
-from plot.timeseries import plot_timeseries, get_xlabel_multiplier
+from plot.functional.timeseries import timerseries_to_ax, get_xlabel_multiplier
 from omegaconf import ListConfig
-from plot.spatial import plot_variable
+from plot.functional.spatial import plot_variable
 
 import matplotlib.pyplot as plt
 

@@ -1,12 +1,15 @@
+from cProfile import label
+from typing import List
 import xarray as xr
 from glob import glob
 from hydra.utils import instantiate
 import numpy as np
 from metrics import module as metric_modules
 
+from plot.modules import SpatialPlotter
 
 class GeoClimate:
-    def __init__(self, data, metric_cfgs, output_path="."):
+    def __init__(self, data, metric_cfgs, output_path=".",  container_type="cmorized"):
         """
         Initializes the GeoClimate evaluation module with data containers and metrics.
         Parameters:
@@ -14,9 +17,15 @@ class GeoClimate:
         metrics (list): List of metric configuration dictionaries.
         """
 
+        if container_type == "cmorized":
+            self.container_class = CMORDataContainer
+        else:
+            self.container_class = DataContainer
+
         self.output_path = output_path
         self._init_data(data)
         self._init_metrics(metric_cfgs=metric_cfgs)
+
 
     def _init_data(self, data):
         self.data_containers = []
@@ -24,7 +33,7 @@ class GeoClimate:
 
             print("Adding data for:", d_name)
         
-            container = DataContainer(**v)
+            container = self.container_class(**v)
 
             container._load_data_from_paths()
             self.data_containers.append(container)
@@ -56,7 +65,8 @@ class GeoClimate:
             metric.evaluate(self.data_containers)
 
 
-class CmorDataContainer:
+class CMORDataContainer:
+    
     variable_names = {   
             "hus": "specific_humidity",
             "psl": "sea_level_pressure",
@@ -67,11 +77,14 @@ class CmorDataContainer:
             "uas": "eastward_near_surface_wind",
             "vas": "northward_near_surface_wind",
             "va": "northward_wind",
-            "zg": "geopotential_height"}
+            "zg": "geopotential_height",
+            "siconc": "sea_ice_cover",
+            "wap": "vertical_velocity",
+    }
     
 
     def __init__(
-            self, label, path_to_monthly_data=None, path_to_daily_data=None, 
+            self, model_label, path_to_monthly_data=None, path_to_daily_data=None, 
             variable_names=None):
         """
         This container loads cmorized data and provides functionality 
@@ -82,7 +95,7 @@ class CmorDataContainer:
         """
 
         print("#" * 72)
-        print("Initializing CmorDataContainer for ", label)
+        print("Initializing CmorDataContainer for ", model_label)
         assert path_to_monthly_data is not None or path_to_daily_data is not None, \
         "At least one of path_to_monthly_data or path_to_daily_data must be provided."
 
@@ -97,7 +110,8 @@ class CmorDataContainer:
         self.path_to_monthly_data = path_to_monthly_data
         self.path_to_daily_data = path_to_daily_data
 
-        print("Initialized CmorDataContainer for ", label)
+        self.model_label = model_label
+        print("Initialized CmorDataContainer for ", self.model_label)
         print("#" * 72)
 
 
@@ -131,7 +145,7 @@ class CmorDataContainer:
             Loads daily data.
         """
 
-        assert self.path_to_daily_data is not None, \   
+        assert self.path_to_daily_data is not None, \
         "path_to_daily_data must be provided to load daily data."
 
         print("--> Loading daily data from:", self.path_to_daily_data)
@@ -171,6 +185,87 @@ class CmorDataContainer:
             raise ValueError("Frequency must be either 'monthly' or 'daily'.")
     
 
+
+# Class that calculates temporally averaged data from CMORized NetCDF files
+# Further the data is averaged over spatial dimensions that are not specified 
+# as plotting dimensions
+
+
+def annual_mean(data, time_dim='time', year=None):
+    if year is not None:
+        data = data.sel({f'{time_dim}.year': year})
+        return data.mean(time_dim)
+    else:
+        return data.mean(time_dim)
+
+def seasonal_mean(data,  season=None, time_dim='time'):
+    if season is not None:
+        data = data.sel({f'{time_dim}.season': season})
+        return data.mean(time_dim)
+    else:
+        return data.mean(time_dim)
+    
+def instantaneous(data, time, time_dim='time'):
+    return data.sel({time_dim: time}, nearest=True, drop=True)
+
+class XYMaps:
+    def __init__(self, xdim, ydim, temporal_selection: list = ['annual']):
+        self.xdim = xdim
+        self.ydim = ydim
+
+        self.temporal_selection = temporal_selection
+
+        print("Initializing XYMaps Plotter")
+        from module import SpatialPlotter
+        self.plotter = SpatialPlotter(xdim=self.xdim, ydim=self.ydim)
+        
+    def compute(self, data_container: CMORDataContainer, temporal_dim, variable_name: str, frequency: str = "monthly"):
+        """
+
+        Compute spatially averaged data for given temporal dimension and variable.
+
+        Args:
+            data_container (CMORDataContainer): _description_
+            temporal_dim (_type_): _description_
+            variable_name (str): _description_
+            frequency (str, optional): _description_. Defaults to "monthly".
+
+        Returns:
+            _type_: _description_
+        """
+        data = data_container.get_variable_data(variable_name, frequency)
+
+        if temporal_dim == 'annual':
+            data = annual_mean(data)
+        elif temporal_dim in ['DJF', 'MAM', 'JJA', 'SON']:
+            data = seasonal_mean(data, season=temporal_dim)
+        else: 
+            data = instantaneous(data, time=temporal_dim)    
+        
+        # Take spatial means
+        data = data.mean(
+            dim=[d for d in data.dims if d not in [self.xdim, self.ydim]]
+        )
+
+        return data
+    
+    def evaluate(self, data_containers: CMORDataContainer):
+        for ts in self.temporal_selection:
+            print(f"Computing {self.xdim}-{self.ydim} map for temporal selection: {ts}")
+            print("-" * 72)
+            # Do computation here
+            for data_container in data_containers:
+                data = self.compute(
+                    data_container,
+                    temporal_dim=ts,
+                    variable_name='surface_air_temperature',
+                    frequency='monthly'
+                )
+
+
+    
+                
+            
         
 
 

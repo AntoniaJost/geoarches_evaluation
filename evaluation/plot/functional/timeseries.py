@@ -41,83 +41,51 @@ def _fill_positive_negative(ax, data):
     ax.fill_between(time_ids, 0, positive, color="orange")
     ax.fill_between(time_ids, 0, negative, color="paleturquoise")
 
-
-def plot_timeseries(
+def fill_timeseries(
+    ax,
     x,
-    xticks=None,
-    title="",
-    xlabel="",
-    ylabel="",
-    output_path="",
-    add_data_trend=False,
-    ref=None,
     std=None,
-    linewidth=2.0,
-    fill=None,
-    label=None,
-    ref_label=None,
-    marker=None,
-    figsize=(15, 5),
-    dpi=150,
-    ax=None,
-    fontdict=fontdict,
+    fill_type="std",
 ):
-    if ax is None:
-        fig = plt.figure(figsize=figsize, dpi=dpi)
-        ax = fig.add_subplot(111)
-        plt.rcParams.update(fontdict)
-    else:
-        plt.rcParams.update(fontdict)
-
-    ax.plot(x, color="black", linewidth=linewidth, label=label, marker=marker)
-
-    if fill == "all":
+    if fill_type == "std":
+        assert std is not None, "Standard deviation must be provided for 'std' fill type."
         ax.fill_between(range(len(x)), x - std, x + std, color="gray", alpha=0.2)
-    elif fill == "positive_negative":
+    elif fill_type == "positive_negative":
         _fill_positive_negative(ax, x)
     else:
         pass
 
-    if add_data_trend:
-        # Add a linear trend line
-        z = np.polyfit(np.arange(len(x)), x, 1)
-        p = np.poly1d(z)
+
+
+def timerseries_to_ax(
+    ax,
+    x,
+    y,
+    color="black",
+    xticks=None,
+    title="",
+    linear_trend=None,
+    std=None,
+    linewidth=2.0,
+    fill=None,
+    label="",
+    marker=None,
+):
+
+
+    ax.plot(x, color="black", linewidth=linewidth, label=label, marker=marker)
+    
+    fill_timeseries(ax, x, std, fill_type=fill)
+
+    if linear_trend is not None:
         ax.plot(
-            np.arange(len(x)),
-            p(np.arange(len(x))),
-            label="Linear Trend",
+            linear_trend,
+            label=label + " Trend",
             linestyle="--",
-            color="black",
-        )
+            color=color,
+            linewidth=linewidth,
+        )   
 
-    if ref is not None:
-        ax.plot(ref, color="orange", linewidth=linewidth, label=ref_label)
-
-    if std is not None:
-        ax.fill_between(range(len(x)), x - std, x + std, color="gray", alpha=0.2)
-
-    if xticks is not None:
-        if isinstance(xticks, tuple) or isinstance(xticks, list):
-            ax.set_xticks(ticks=xticks[0], labels=xticks[1], rotation=45, ha="right")
-        else:
-            mult = get_xlabel_multiplier(len(xticks))
-            ax.set_xticks(
-                ticks=range(0, len(xticks), mult),
-                labels=xticks[::mult],
-                rotation=45,
-                ha="right",
-            )
-
-    ax.set_title(title)
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.grid()
-
-    if label is not None:
-        ax.legend()
-
-    plt.tight_layout()
-    plt.savefig(output_path)
 
 
 def plot_annual_oscillation(
