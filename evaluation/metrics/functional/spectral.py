@@ -38,7 +38,7 @@ def compute_radial_spectra(dataset):
     return spectra
 
 
-def welch_psd(x: Union[np.array, xr.DataArray], fs=1.0, nperseg=128, noverlap=64):
+def welch_psd(x: np.ndarray | xr.DataArray, fs=1.0, nperseg=128, noverlap=64):
     """Compute the Welch power spectral density estimate."""
 
     if isinstance(x, xr.DataArray):

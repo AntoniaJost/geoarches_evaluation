@@ -1,0 +1,18 @@
+annual_cycle:
+  _target_: metrics.module.SeasonalCycles
+  variables:
+    - {"name": "tos", "pressure_level": null}
+    - {"name": "tas", "pressure_level": null}
+  mean_groups:
+    - "time.year"
+    - "time.month"
+  baseline_mean_groups:
+    - "time.month"
+  detrend: True
+  linear_trend: False
+  compute_anomalies: True
+  baseline_period: ["1981-01-01", "2010-12-31"]
+  plotter_kwargs:
+    output_path: "timeseries/anomalies"
+
+    

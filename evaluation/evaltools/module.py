@@ -1,5 +1,6 @@
 from cProfile import label
 from typing import List
+from omegaconf import OmegaConf
 import xarray as xr
 from glob import glob
 from hydra.utils import instantiate
@@ -9,7 +10,7 @@ from metrics import module as metric_modules
 from plot.modules import SpatialPlotter
 
 class GeoClimate:
-    def __init__(self, data, metric_cfgs, output_path=".",  container_type="cmorized"):
+    def __init__(self, data, metric_cfgs, output_path="."):
         """
         Initializes the GeoClimate evaluation module with data containers and metrics.
         Parameters:
@@ -17,13 +18,8 @@ class GeoClimate:
         metrics (list): List of metric configuration dictionaries.
         """
 
-        if container_type == "cmorized":
-            self.container_class = CMORDataContainer
-        else:
-            self.container_class = DataContainer
-
         self.output_path = output_path
-        self._init_data(data)
+        self._init_data(data["models"])
         self._init_metrics(metric_cfgs=metric_cfgs)
 
 
@@ -33,9 +29,8 @@ class GeoClimate:
 
             print("Adding data for:", d_name)
         
-            container = self.container_class(**v)
+            container = CMORDataContainer(**v)
 
-            container._load_data_from_paths()
             self.data_containers.append(container)
 
     def _init_metrics(self, metric_cfgs):
@@ -44,11 +39,12 @@ class GeoClimate:
         metric_cfgs = metric_cfgs["metrics"]
         for metric_name, metric_cfg in metric_cfgs.items():
             print("Adding metric:", metric_name)
-            #metric = getattr(metric_modules, metric_cfg["target"])(
-            #    output_path=self.output_path,
-            #    **metric_cfg["params"]
-            #)
-            metric = instantiate(metric_cfg, output_path=self.output_path)
+
+            # preprend global output path to metric output path
+            metric_cfg["plotter_kwargs"]["output_path"] = \
+                self.output_path + "/" + metric_cfg["plotter_kwargs"].get("output_path", "")
+            metric_cfg = OmegaConf.to_container(cfg=metric_cfg, resolve=True)
+            metric = instantiate(metric_cfg)
             self.metric_objects[metric_name] = metric
 
 
@@ -70,7 +66,7 @@ class CMORDataContainer:
     variable_names = {   
             "hus": "specific_humidity",
             "psl": "sea_level_pressure",
-            "ta:": "air_temperature",
+            "ta": "air_temperature",
             "tas": "surface_air_temperature",
             "tos": "sea_surface_temperature",
             "ua": "eastward_wind",
@@ -84,8 +80,10 @@ class CMORDataContainer:
     
 
     def __init__(
-            self, model_label, path_to_monthly_data=None, path_to_daily_data=None, 
-            variable_names=None):
+            self, model_label, grid_type='gn', path_to_monthly_data=None, path_to_daily_data=None, 
+            variable_names=None, is_reference: bool = False, roll_longitude: bool = True, color='k',
+            period=None
+        ):
         """
         This container loads cmorized data and provides functionality 
         to load and yield data. 
@@ -99,9 +97,14 @@ class CMORDataContainer:
         assert path_to_monthly_data is not None or path_to_daily_data is not None, \
         "At least one of path_to_monthly_data or path_to_daily_data must be provided."
 
+        self.period = period
+        self.grid_type = grid_type
+        self.roll_longitude = roll_longitude
         if path_to_daily_data is not None:
+            self.path_to_daily_data = path_to_daily_data
             self.load_daily_data()
         if path_to_monthly_data is not None:
+            self.path_to_monthly_data = path_to_monthly_data
             self.load_monthly_data()
 
         if variable_names is not None:
@@ -109,8 +112,11 @@ class CMORDataContainer:
         
         self.path_to_monthly_data = path_to_monthly_data
         self.path_to_daily_data = path_to_daily_data
+        self.is_reference = is_reference
 
         self.model_label = model_label
+        self.model_color = color
+
         print("Initialized CmorDataContainer for ", self.model_label)
         print("#" * 72)
 
@@ -124,16 +130,24 @@ class CMORDataContainer:
 
         print("--> Loading monthly data from:", self.path_to_monthly_data)
 
-
-        fpaths = glob(self.path_to_monthly_data + "/*.nc", recursive=True)
-        fpaths.sort()
-
         # Data is given per variable
         data_vars = {}
-        for var_short, var_name in self.variable_names.items():
-            var_fpaths = [f for f in fpaths if f"/{var_short}/" in f]
-            print(f"... {var_name} from:", var_fpaths, " ...", end=" ")
-            data_vars[var_name] = xr.open_mfdataset(var_fpaths, combine="by_coords")
+        for var_short, _ in self.variable_names.items():
+            fpaths = glob(self.path_to_monthly_data + f"/{var_short}/" + "/**/*.nc", recursive=True)
+            fpaths.sort()
+            if fpaths == []:
+                print(f"!!! No files found for variable {var_short} in path {self.path_to_monthly_data}/{var_short}/")
+                continue
+            print(f"... {var_short} from:", fpaths, " ...", end=" ")
+            data_vars[var_short] = xr.open_mfdataset(fpaths, combine="by_coords")
+            if self.period is not None:
+                data_vars[var_short] = data_vars[var_short].sel(
+                    time=slice(self.period[0], self.period[1])
+                )
+            if self.roll_longitude:
+                data_vars[var_short] = data_vars[var_short].roll(
+                    lon=-len(data_vars[var_short].lon) // 2, roll_coords=False
+                )  # Roll longitude to match data
             print("Done")
         print("--> Finished loading monthly data.")
         
@@ -149,25 +163,37 @@ class CMORDataContainer:
         "path_to_daily_data must be provided to load daily data."
 
         print("--> Loading daily data from:", self.path_to_daily_data)
-        fpaths = glob(self.path_to_daily_data + "/*.nc", recursive=True)
-        fpaths.sort()
 
         # Data is given per variable
         data_vars = {}
-        for var_short, var_name in self.variable_names.items():
-            var_fpaths = [f for f in fpaths if f"/{var_short}/" in f]
-            print(f"... {var_name} from:", var_fpaths, " ...", end=" ")
-            data_vars[var_name] = xr.open_mfdataset(var_fpaths, combine="by_coords")
+        for var_short, _ in self.variable_names.items():
+            fpaths = glob(self.path_to_daily_data + f"/{var_short}/" + "/**/*.nc", recursive=True)
+            fpaths.sort()
+            if fpaths == []:
+                print(f"!!! No files found for variable {var_short} in path {self.path_to_daily_data}/{var_short}/")
+                continue
+            print(f"... {var_short} from:", fpaths, " ...", end=" ")
+            data_vars[var_short] = xr.open_mfdataset(fpaths, combine="by_coords")
+            if self.period is not None:
+                data_vars[var_short] = data_vars[var_short].sel(
+                    time=slice(self.period[0], self.period[1])
+                )
+            if self.roll_longitude:
+                data_vars[var_short] = data_vars[var_short].roll(
+                    lon=-len(data_vars[var_short].lon) // 2, roll_coords=False
+                )  # Roll longitude to match data
             print("Done")
+
+
 
         print("--> Finished loading daily data.")
         self.daily_data = data_vars
 
-    def get_variable_data(self, variable_name, frequency="monthly"):
+    def get_variable_data(self, name, pressure_level=None, frequency="monthly"):
         """
         Yields data for the specified variable name and frequency.
         Parameters:
-        variable_name (str): Name of the variable to retrieve.
+        name (str): Name of the variable to retrieve.
         frequency (str): Frequency of the data ("monthly" or "daily").
         Returns:
         xarray.DataArray: Data for the specified variable.
@@ -176,97 +202,23 @@ class CMORDataContainer:
         if frequency == "monthly":
             assert hasattr(self, "monthly_data"), \
             "Monthly data not loaded. Please load monthly data first."
-            return self.monthly_data[variable_name]
+            data = self.monthly_data[name]
         elif frequency == "daily":
             assert hasattr(self, "daily_data"), \
             "Daily data not loaded. Please load daily data first."
-            return self.daily_data[variable_name]
+            data = self.daily_data[name]
         else:
             raise ValueError("Frequency must be either 'monthly' or 'daily'.")
-    
+        
+        if pressure_level is not None:
+            data = data.sel(plev=pressure_level)
+
+        return data
 
 
 # Class that calculates temporally averaged data from CMORized NetCDF files
 # Further the data is averaged over spatial dimensions that are not specified 
 # as plotting dimensions
-
-
-def annual_mean(data, time_dim='time', year=None):
-    if year is not None:
-        data = data.sel({f'{time_dim}.year': year})
-        return data.mean(time_dim)
-    else:
-        return data.mean(time_dim)
-
-def seasonal_mean(data,  season=None, time_dim='time'):
-    if season is not None:
-        data = data.sel({f'{time_dim}.season': season})
-        return data.mean(time_dim)
-    else:
-        return data.mean(time_dim)
-    
-def instantaneous(data, time, time_dim='time'):
-    return data.sel({time_dim: time}, nearest=True, drop=True)
-
-class XYMaps:
-    def __init__(self, xdim, ydim, temporal_selection: list = ['annual']):
-        self.xdim = xdim
-        self.ydim = ydim
-
-        self.temporal_selection = temporal_selection
-
-        print("Initializing XYMaps Plotter")
-        from module import SpatialPlotter
-        self.plotter = SpatialPlotter(xdim=self.xdim, ydim=self.ydim)
-        
-    def compute(self, data_container: CMORDataContainer, temporal_dim, variable_name: str, frequency: str = "monthly"):
-        """
-
-        Compute spatially averaged data for given temporal dimension and variable.
-
-        Args:
-            data_container (CMORDataContainer): _description_
-            temporal_dim (_type_): _description_
-            variable_name (str): _description_
-            frequency (str, optional): _description_. Defaults to "monthly".
-
-        Returns:
-            _type_: _description_
-        """
-        data = data_container.get_variable_data(variable_name, frequency)
-
-        if temporal_dim == 'annual':
-            data = annual_mean(data)
-        elif temporal_dim in ['DJF', 'MAM', 'JJA', 'SON']:
-            data = seasonal_mean(data, season=temporal_dim)
-        else: 
-            data = instantaneous(data, time=temporal_dim)    
-        
-        # Take spatial means
-        data = data.mean(
-            dim=[d for d in data.dims if d not in [self.xdim, self.ydim]]
-        )
-
-        return data
-    
-    def evaluate(self, data_containers: CMORDataContainer):
-        for ts in self.temporal_selection:
-            print(f"Computing {self.xdim}-{self.ydim} map for temporal selection: {ts}")
-            print("-" * 72)
-            # Do computation here
-            for data_container in data_containers:
-                data = self.compute(
-                    data_container,
-                    temporal_dim=ts,
-                    variable_name='surface_air_temperature',
-                    frequency='monthly'
-                )
-
-
-    
-                
-            
-        
 
 
 class DataContainer:

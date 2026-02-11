@@ -1,0 +1,12 @@
+seasonal_means:
+  _target_: metrics.module.XYMaps
+  xdim: "lon"
+  ydim: "lat"
+  temporal_selection: ["annual", "DJF", "MAM", "JJA", "SON"]
+  variables: 
+    - {name: "tas", pressure_level: null} 
+    - {name: "tos", pressure_level: null} 
+    - {name: "ta", pressure_level: 85000}
+
+  plotter_kwargs:
+    output_path: "seasonal_means"

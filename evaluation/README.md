@@ -1,13 +1,28 @@
 # Climate Evaluation Tools for Geoarches
 
-This part of the repo allows to produce long rollouts for climate projects / free runing simulations. The goal is to enable evaluation with respect to common climate metrics and to produce outputs following the **AIMIP naming conventions**. These outputs can then be **cmorized wit the second part of the repository**. 
+This part of the repository serves as a drop-in replacement for tools like PCMDI. 
+The aim is to allow the user to use python libraries only for visualisation and
+evaluation. 
 
-Preferably, the user of this code uses a directory structure adhering to the geoarches suggestions, i.e. **having directories named modelstore and evalstore**. 
+The evaluation code is started via eval.py. The whole code uses hydra and thus 
+allows to flexibly work with yaml files. 
 
-To start a simulation, **rollout.py** and **configs/rollout.yaml** are needed. **rollout.py** works similar to the **main_hydra.py** file of geoarches. You can submit a job by using an sbatch script like the one given in this repository, i.e. rollout.sh. 
+In the config directory, there is a config.yaml. This file is the main config
+and combines all information about the data, found in configs/models/data.yaml
+and all information about the desired metrics, found in configs/eval/metrics.yaml
 
-The config file should be self-explaining. 
+In configs/models there is a dedicated data directory. For each model / ground truth 
+a separate .yaml file is placed in this directory. The data.yaml file collects the 
+desired files and combines them into a single file. 
 
-Evaluation routines will be provided updated asap. 
+Similar for all desired metrics, the metrics.yaml file collect all desired metrics.
 
-For questions contact me via **robert.brunstein@ovgu.de**
+When running eval.py, the GeoClimate class is instantiated. Within this class, 
+so called CMORDataContainers are created. Each CMORDataContainer contains the
+data of a model, together with the labels, linewidths, colors and other attributes
+connected to the model data. Further, the GeoClimate class contains instances
+of all metrics / evaluation targets. 
+
+Within eval.py, GeoClimate.eval() is called and all the quantitaive and 
+qualitative measures of climate are evaluated.
+
