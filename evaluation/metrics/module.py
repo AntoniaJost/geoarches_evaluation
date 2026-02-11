@@ -669,7 +669,6 @@ class NorthernAtlanticOscillationIndex:
     def compute(self, data_container):
         psl = data_container.get_variable_data(name="psl", frequency="monthly", pressure_level=None)
         # Select grid points based on method    
-        print(psl)
         if self.method == "Hurrell":
             if psl.lat[0] > psl.lat[-1]:  # Check if latitudes are in ascending order
                 psl_sel = psl.sel(lat=slice(80, 20), lon=slice(90, 220))
