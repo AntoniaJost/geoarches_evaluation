@@ -1,0 +1,6 @@
+nao:
+  _target_: metrics.module.NorthernAtlanticOscillationIndex
+  method: "Hurrell"
+  plotter_kwargs:
+    output_path: "nao"
+    

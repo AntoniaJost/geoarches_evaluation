@@ -1,7 +1,12 @@
 general:
   work_dir: "${RUN_DIR}" 
+<<<<<<< HEAD
+  repo_dir: "/work/bk1450/b383170/repositories/geoarches_evaluation/cmorisation"
+  log_dir: "${RUN_DIR}/logs"
+=======
   repo_dir: "${REPO_DIR}"
   log_dir: "${LOG_DIR}"
+>>>>>>> main
   log_level: "DEBUG"
   means_changed_path: "${RUN_DIR}/1_means/means_changed.json" 
   delete_intermediate_outputs: false # if true, everything besides final cmorised output gets deleted in the end

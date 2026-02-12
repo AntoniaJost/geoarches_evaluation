@@ -1,0 +1,10 @@
+# Specify which configs to use.
+defaults:  
+  - _self_
+  - data: data  
+  - eval: metrics
+
+
+output_path: "./evalstore/results/new_pipeline"
+latitude: 181
+

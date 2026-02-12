@@ -1,50 +1,37 @@
 #!/bin/bash
-#SBATCH --job-name=cmor-awm-sst4k-5
-#SBATCH --time=08:00:00
+#SBATCH --job-name=cmor_0k_m1-1978
+#SBATCH --time=06:00:00
 #SBATCH --partition=compute
 #SBATCH --account=bk1450
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=8
 #SBATCH --mem-per-cpu=24G
 #SBATCH --output=logs/slurm_%x_%j.out
 #SBATCH --error=logs/slurm_%x_%j.err
+#SBATCH --dependency=afterany:22210134  # replace with actual job ID if needed
 
-source /work/bk1450/b383170/geoenv/bin/activate
-module load cdo/2.5.3-gcc-11.2.0
+module load cdo/2.5.3-gcc-11.2.0 
+source ~/repositories/geoenv/bin/activate
+
+export ACCOUNT="b383170"
+
 set -euo pipefail
 
-### ----------------------------
-# IDEALLY, ALL YOU NEED TO TOUCH IS WITHIN THIS BLOCK. ADJUST ACCORDING TO YOUR DATA & STRUCTURE
-MODEL_TAG="ArchesWeather" # part of folder path of input data
-NAME="ArchesWeather" #"ArchesWeather", "ArchesWeatherGen"
-MEMBER="5" # typically 1 to 5
+# ADJUST THESE 5 VARS ACCORDING TO YOUR DATA & STRUCTURE
+MODEL_TAG="ArchesWeatherGen" # part of folder path of input data
+NAME="ArchesWeatherGen" #"ArchesWeather"
+MEMBER=1  # member number of the ensemble you want to cmorise
 ENSEMBLE="r${MEMBER}i1p1f1"
-SCENARIO="4k"
-TAG="${NAME}_${ENSEMBLE}_gn" # part of the input filename, without "day_"
-INPUT_DIR="/work/bk1450/b383170/eval/ArchesWeather/sst_${SCENARIO}/daily/member_${MEMBER}"
-TIMESPAN="1978-2025" # timespan of your input files
-TIMESPANS_DAILY=(
-  '["1978-10-01 ","2025-01-01"]'
-  # '["2013-01-01","2014-12-31"]'
-) # timespan(s) for which daily data is wanted. Has to be of format ["start date", "end date"]. if aimip=true timespan will be overwritten by aimip requirements
-AIMIP="true" # "true" or "false"
-RUN_DIR="/work/bk1450/b383170/rollouts/cmorised_aimip/ArchesWeather/${SCENARIO}/mem${MEMBER}" # working directory where all output will be stores
-REPO_DIR="/work/bk1450/b383170/repositories/geoarches_evaluation/cmorisation" # directory of the repository (important: with "cmorisation" folder!)
-LOG_DIR="/work/bk1450/b383170/rollouts/cmorised_aimip/ArchesWeather/${SCENARIO}/mem${MEMBER}/logs" # where you want your logs
-### ----------------------------
+SST="0k"
 
-if [[ "${AIMIP,,}" == "true" ]]; then # spaces are important, don't change!!
-# DO NOT TOUCH THESE, they are the aimip requirements
-  TIMESPANS_DAILY=(
-    '["1978-10-01", "1979-12-31"]'
-    '["2024-01-01", "2024-12-31"]'
-  )
-  ZG_TO_500="true"
-  LEVELS="[1000, 850, 700, 500, 250, 100, 50]"
-else
-  ZG_TO_500="false" # decide if zg (geopotential height) shall be reduced to only contain 500hPa
-  LEVELS="[50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000]"
-fi
+TAG="${MODEL_TAG}_${ENSEMBLE}_gn" # part of the input filename
+INPUT_DIR="/home/b/b383170/repositories/geoarches_evaluation/cmorisation/rollouts/${MODEL_TAG}/sst_${SST}/daily/member_${MEMBER}" # path to your input files
+TIMESPAN="1978-2025" # timespan of your input files
+TIMESPAN_DAILY='["1978-10-01", "1979-12-31"]' # timespan for which daily data is wanted. has to be of format ["start date", "end date"], cannot span multiple time frames, needs to be run twice. ["1978-10-01", "1979-12-31"],
+#TIMESPAN_DAILY='["2024-01-01", "2024-12-31"]' # second run for 2024
+ZG_TO_500="true" # decide if zg (geopotential height) shall be reduced to only contain 500hPa
+
+export RUN_DIR="/home/b/b383170/repositories/geoarches_evaluation/cmorisation/rollouts/cmorised_aimip/${MODEL_TAG}/sst_${SST}/member_${MEMBER}"
 
 mkdir -p "${RUN_DIR}/logs" \
          "${RUN_DIR}/1_means/daily_means" \
@@ -83,8 +70,6 @@ for (( i=0; i<${#TIMESPANS_DAILY[@]}; i++ )); do # (https://www.gnu.org/software
     echo "Skipping monmean: ${MONTHLY_MEAN_FILE} already exists."
   fi
 
-  python src/pipeline.py --config "${RUN_DIR}/config.yaml"
-  echo "Done. Outputs under: ${RUN_DIR}"
-done
+python3 src/pipeline.py --config "${RUN_DIR}/config.yaml"
 
-echo "ALL DONE."
+echo "Done. Outputs under: ${RUN_DIR}"

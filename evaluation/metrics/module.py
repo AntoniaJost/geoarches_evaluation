@@ -1,15 +1,16 @@
 import os
-from matplotlib import gridspec
-from matplotlib.colors import TwoSlopeNorm, CenteredNorm
-from sympy import use
+import itertools
+
+from matplotlib.colors import CenteredNorm
+from sympy import use, var
 from metrics import functional
 
-from metrics.functional import timeseries, frequency_domain, kernel_density_estimation, utils
-from plot.timeseries import plot_timeseries, get_xlabel_multiplier
-from omegaconf import ListConfig
-from plot.spatial import plot_variable
+from metrics.functional import timeseries, spectral, kernel_density_estimation, utils
+from plot.functional.timeseries import timerseries_to_ax, get_xlabel_multiplier
+from plot.functional.spatial import lambert_conformal_projection_plot
+from plot.modules import EarthPlotter, SpatialPlotter, TimeseriesPlotter
 
-import matplotlib.pyplot as plt
+
 
 from geoarches.metrics.metric_base import (
     compute_lat_weights,
@@ -22,6 +23,741 @@ import numpy as np
 import pandas as pd
 
 
+def annual_mean(data, time_dim='time', year=None):
+    if year is not None:
+        data = data.sel({f'{time_dim}.year': year})
+        return data.mean(time_dim)
+    else:
+        return data.mean(time_dim)
+
+def seasonal_mean(data,  season=None, time_dim='time'):
+    if season is not None:
+        data = data.groupby(f"{time_dim}.season").mean(time_dim).sel(season=season)
+        return data
+    else:
+        return data.mean(time_dim)
+    
+def instantaneous(data, time, time_dim='time'):
+    return data.sel({time_dim: time}, nearest=True, drop=True)
+
+def compute_anomaly(
+        data: xr.DataArray | xr.Dataset, 
+        baseline_period, 
+        mean_groups, 
+        baseline_mean_groups,
+        standardize: bool = False,
+    ):
+
+    baseline_data = data.sel(
+        time=(data.time.values >= np.datetime64(baseline_period[0], 'ns')) & 
+             (data.time.values <= np.datetime64(baseline_period[1], 'ns')), method="nearest"
+    )
+
+    if baseline_mean_groups is None:
+        baseline_mean = baseline_data.mean(dim='time')
+    else:
+        baseline_mean = baseline_data.groupby(baseline_mean_groups).mean(dim='time')
+
+    anomalies = data.groupby(mean_groups).mean(dim='time') - baseline_mean
+
+    if standardize:
+        if baseline_mean_groups is None:
+            baseline_std = baseline_data.std(dim='time')
+        else: 
+            baseline_std = baseline_data.groupby(baseline_mean_groups).std(dim='time')
+        anomalies = anomalies / baseline_std
+
+    return anomalies
+
+def compute_bias(data, reference_data):
+    bias = data - reference_data
+    return bias
+
+class XYMaps:
+    def __init__(self, variables, xdim, ydim, temporal_selection: list = ['annual'], plotter_kwargs: dict = {}):
+        self.variables = list(variables)
+        self.xdim = xdim
+        self.ydim = ydim
+
+        self.temporal_selection = temporal_selection
+
+        print("Initializing XYMaps Plotter")
+        self.plotter = SpatialPlotter(xdim=self.xdim, ydim=self.ydim, **plotter_kwargs)
+        
+    def select_by_time(self, data, temporal_dim):
+        if temporal_dim == 'annual':
+            data = annual_mean(data)
+        elif temporal_dim in ['DJF', 'MAM', 'JJA', 'SON']:
+            data = seasonal_mean(data, season=temporal_dim)
+        else: 
+            data = instantaneous(data, time=temporal_dim)   
+
+        return data
+    
+    def compute(self, data_container, temporal_dim, var: dict, frequency: str = "monthly"):
+        """
+
+        Compute spatially averaged data for given temporal dimension and variable.
+
+        Args:
+            data_container (CMORDataContainer): _description_
+            temporal_dim (_type_): _description_
+            var (dict): _description_
+            frequency (str, optional): _description_. Defaults to "monthly".
+
+        Returns:
+            _type_: _description_
+        """
+        # Load data of the variable given a frequency
+        data = data_container.get_variable_data(**var, frequency=frequency)
+
+        # Select by time (i.e. select the time range / season / year / instance)
+        data = self.select_by_time(data, temporal_dim)
+
+        # Average over all dimensions except the spatial ones
+        data = data.mean(
+            dim=[d for d in data.dims if d not in [self.xdim, self.ydim]]
+        )
+
+        return data
+    
+    def evaluate(self, data_containers):
+
+        for ts in self.temporal_selection:
+            print(f"Computing {self.xdim}-{self.ydim} map for temporal selection: {ts}")
+            print("-" * 72)
+            # Do computation here
+            for variable in self.variables:
+                name, pressure_level = variable['name'], variable['pressure_level']
+                if pressure_level is not None:
+                    print(
+                        f"--> Processing variable: {name}" 
+                        f" at pressure level {pressure_level} Pa")
+                else:
+                    print(f"--> Processing variable: {name}")
+                
+                for data_container in data_containers:
+                    data = self.compute(
+                        data_container,
+                        temporal_dim=ts,
+                        var=variable,
+                        frequency='monthly'
+                    )
+
+                    # ensure that data has dimensions in order [ydim, xdim]
+                    data = data.transpose(self.ydim, self.xdim)
+                    x = data[name].values 
+
+                    var_name = f"{name}_{pressure_level}Pa" if pressure_level is not None else name
+                    # Add temporal selection to output path for plotting
+                    output_path = os.path.join(self.plotter.output_path, ts)
+
+                    self.plotter.plot(
+                        x=x,
+                        variable_name=var_name,
+                        title="",
+                        model_label=data_container.model_label,
+                        style="imshow",
+                        output_path=output_path
+                    )
+                          
+
+class XYBiasMaps(XYMaps):
+    def compute(self, data_container, temporal_dim, variable_name: str, frequency: str = "monthly"):
+        """
+
+        Compute spatially averaged bias data for given temporal dimension and variable.
+
+        Args:
+            data_container (CMORDataContainer): _description_
+            temporal_dim (_type_): _description_
+            variable_name (str): _description_
+            frequency (str, optional): _description_. Defaults to "monthly".
+
+        Returns:
+            _type_: _description_
+        """
+
+        # Get Model data
+        data = data_container.get_variable_data(variable_name, frequency)
+        data = self.select_by_time(data, temporal_dim, variable_name, frequency)
+        data = data.mean(
+            dim=[d for d in data.dims if d not in [self.xdim, self.ydim]]
+        )
+
+        # Get Reference data
+        reference_data = self.reference_data.get_variable_data(variable_name, frequency)
+        reference_data = self.select_by_time(reference_data, temporal_dim, variable_name, frequency)
+        reference_data = reference_data.mean(
+            dim=[d for d in reference_data.dims if d not in [self.xdim, self.ydim]]
+        )
+      
+        bias_data = compute_bias(data, reference_data)
+
+        return bias_data
+    
+    def evaluate(self, data_containers):
+        idx_ref = [i for i, dc in enumerate(data_containers) if dc.is_reference]
+        self.reference_data = data_containers[idx_ref[0]] if idx_ref else None
+        assert self.reference_data is not None, "No reference data container found."
+
+        return super().evaluate(data_containers)
+    
+    
+class XYAnomalyMaps(XYMaps):
+    def __init__(self, variables, xdim, ydim, temporal_selection = ['annual'], baseline_period = ('1981-01-01T00', '2010-12-31T00')):
+        super().__init__(variables, xdim, ydim, temporal_selection)
+        self.baseline_period = baseline_period
+
+    def compute(self, data_container, temporal_dim, variable_name: str, frequency: str = "monthly"):
+        """
+
+        Compute spatially averaged anomaly data for given temporal dimension and variable.
+
+        Args:
+            data_container (CMORDataContainer): _description_
+            temporal_dim (_type_): _description_
+            variable_name (str): _description_
+            frequency (str, optional): _description_. Defaults to "monthly".
+
+        Returns:
+            _type_: _description_
+        """
+
+        # Get Model data
+        data = data_container.get_variable_data(variable_name, frequency)
+        data = self.select_by_time(data, temporal_dim, variable_name, frequency)
+        data = data.mean(
+            dim=[d for d in data.dims if d not in [self.xdim, self.ydim]]
+        )
+      
+        anomaly_data = compute_anomaly(data, baseline_period=self.baseline_period)
+
+        return anomaly_data
+
+class Timeseries:
+    def __init__(
+            self, 
+            variables: list[str] = None, 
+            detrend: bool = False, 
+            compute_anomalies: bool = False, 
+            mean_groups: list = None,
+            baseline_period: tuple = None, 
+            baseline_mean_groups: list = None,
+            plotter_kwargs: dict = None):
+        super().__init__()
+
+        # Variables to evaluate
+        self.variables = variables
+
+        # Mean and baseline groups 
+        self.mean_groups = mean_groups
+
+        # Baseline mean groups for anomaly calculation
+        self.baseline_mean_groups = baseline_mean_groups
+        
+        # If to compute anomalies and how to compute them
+        self.compute_anomalies = compute_anomalies
+        if self.compute_anomalies and baseline_period is None:
+            raise ValueError("A baseline period must be provided when computing anomalies.")
+        
+        # Baseline period for anomaly calculation
+        self.baseline_period = baseline_period
+
+        # Whether to detrend data before analysis
+        self.detrend = detrend
+
+        # Initialize plotter
+        output_path = plotter_kwargs.get("output_path", ".")
+        if compute_anomalies:
+            output_path = os.path.join(output_path, f"{baseline_period[0]}-{baseline_period[1]}")
+        if detrend:
+            output_path = os.path.join(output_path, "detrended")
+        plotter_kwargs["output_path"] = output_path 
+        self.timeseries_plotter = TimeseriesPlotter(**(plotter_kwargs or {}))
+
+    def xlabels_from_time(self, time: xr.DataArray):
+        if "month" in time.dims and "year" in time.dims:
+            YM = itertools.product(time['year'].values, time['month'].values)
+            return [f"{y}-{m:02d}" for y, m in YM]
+        elif "month" in time.dims:
+            return time['month'].values
+        elif "year" in time.dims:
+            return time['year'].values
+        else:
+            raise ValueError("Time coordinate must have 'month' and/or 'year' dimensions.")
+
+    def compute(self, data_container, variable: str):
+        data = data_container.get_variable_data(
+                         variable_name=variable,
+                         frequency='monthly'
+                     )
+        
+    def spectrum(self, data: np.ndarray | xr.DataArray, fs: float = 1.0):
+        fx, fy = spectral.welch_psd(data, fs=fs)
+
+        return fx, fy
+        
+    def compute_latitude_weighted_weights(self, latitude): 
+        return compute_lat_weights_weatherbench(latitude)
+    
+    def evaluate(self, data_containers, variables: list[str]):
+        
+        for data_container in data_containers:
+            for variable in variables:
+                self.compute(data_container=data_container, variable=variable)
+
+
+def detrend_data(data: np.ndarray | xr.DataArray) -> np.ndarray | xr.DataArray:
+    coeffs = np.polyfit(range(len(data)), data, deg=1)
+    coeffs[-1] = 0  # Set intercept to zero to preserve mean
+    fit = np.polyval(coeffs, range(len(data)))
+    data.values = data.values - fit
+    
+    return data 
+
+
+class SeasonalCycles(Timeseries):
+    def __init__(
+            self, variables: list[str], mean_groups: list = ["year"], linear_trend: bool = False,
+            detrend=False, compute_anomalies: bool = False, baseline_period: tuple = None,
+            baseline_mean_groups: list = None, plotter_kwargs: dict = None):
+        
+        super().__init__(variables,
+                        detrend=detrend, 
+                        compute_anomalies=compute_anomalies, 
+                        baseline_period=baseline_period,
+                        baseline_mean_groups=baseline_mean_groups,
+                        mean_groups=mean_groups,
+                        plotter_kwargs=plotter_kwargs)
+        
+        if linear_trend and detrend:
+            raise ValueError("Cannot apply both linear trend and detrending. Choose one.")
+        
+        self.linear_trend = linear_trend
+
+
+    def compute(self, data_container, variable: str):
+        data = data_container.get_variable_data(**variable, frequency='monthly')
+        
+        # Reduce to spatial average
+        data = data.mean(dim=["lat", "lon"])
+
+        # Detrend data if specified
+        if self.detrend:
+            data[variable["name"]].values = detrend_data(data[variable["name"]])
+
+        # Compute seasonal cycle
+        if self.compute_anomalies:
+            seasonal_cycle = compute_anomaly(
+                data=data, baseline_period=self.baseline_period, 
+                mean_groups=self.mean_groups,
+                baseline_mean_groups=self.baseline_mean_groups
+            )
+        else:
+            seasonal_cycle = data.groupby(self.mean_groups).mean(dim=["time"])
+
+        time = self.xlabels_from_time(seasonal_cycle)
+        seasonal_cycle = seasonal_cycle.stack(
+            time=[g.split(".")[-1] for g in self.mean_groups]).reset_index("time")
+        seasonal_cycle["time"] = time
+        seasonal_cycle = seasonal_cycle.dropna(dim="time", how="any")
+
+        return seasonal_cycle
+
+    def evaluate(self, data_containers):
+        
+        for variable in self.variables:
+                name, pressure_level = variable['name'], variable['pressure_level']
+                cycles = {}
+                for data_container in data_containers:
+                    cycle = self.compute(
+                        data_container=data_container, variable=variable  
+                    )
+
+                    cycles[data_container.model_label] = \
+                        (cycle.time.values, cycle[name].values)
+                
+                # Colors for each model
+                colors = {
+                    data_container.model_label: data_container.model_color for data_container in data_containers
+                }
+                
+                if self.linear_trend:
+                    trends = {}
+                    for label, (x, y) in cycles.items():
+                        coeffs = np.polyfit(range(len(x)), y, deg=1)
+                        trend_values = np.polyval(coeffs, range(len(x)))
+                        # Coeff is per month slope, convert to per decade
+                        m = coeffs[0] * 12 * 10
+                        trends[label] = (trend_values, m)
+                else:
+                    trends = {}
+
+                var_name = f"{name}_{pressure_level}Pa" if pressure_level is not None else name
+                
+                self.timeseries_plotter.plot(
+                    model_data=cycles,
+                    linear_trend=trends,
+                    colors=colors,
+                    title="",
+                    variable_name=name,
+                    xlabel="Time",
+                    ylabel=f"{self.timeseries_plotter.cmor_units[name]}",
+                    xticks=None,
+                    fname=f"{var_name}.png"
+                )
+
+def compute_soi(data, base_period, detrend=False):
+
+
+    if data.lon.max() > 180:
+        data = data.assign_coords(
+            lon=(data.lon - 180)
+        )
+    
+    # Get Tahiti and Darwin grid points
+    lat_tahiti = -17.65
+    lon_tahiti = -149.42 
+    lat_darwin = -12.46
+    lon_darwin = 130.84
+
+    tahiti_data = data.sel(lat=lat_tahiti, lon=lon_tahiti, method="nearest")
+    darwin_data = data.sel(lat=lat_darwin, lon=lon_darwin, method="nearest")
+
+    tahiti_anomaly = compute_anomaly(
+        tahiti_data, baseline_period=base_period, 
+        mean_groups=["time.year", "time.month"], 
+        baseline_mean_groups=["time.month"], 
+        standardize=True)
+    
+    darwin_anomaly = compute_anomaly(
+        darwin_data, baseline_period=base_period, 
+        mean_groups=["time.year", "time.month"], 
+        baseline_mean_groups=["time.month"], 
+        standardize=True)
+    
+    soi_index = tahiti_anomaly - darwin_anomaly 
+
+    # Standardize by dividing by the standard deviation of the difference during the baseline period
+    soi_index = soi_index / soi_index.std(dim="year")
+    
+    return soi_index
+
+class SouthernOscillationIndex(Timeseries):
+    def __init__(
+            self, variables: list[str] = ["psl"], detrend=False, 
+            compute_anomalies: bool = True, baseline_period: tuple = None, 
+            spectrum: bool = False, plotter_kwargs: dict = None):
+        super().__init__(
+            variables, 
+            detrend=detrend, 
+            compute_anomalies=compute_anomalies, 
+            baseline_period=baseline_period, 
+            plotter_kwargs=plotter_kwargs)
+        
+        self.spectrum = spectral.welch_psd if spectrum else None
+
+    def compute(self, data_container):
+        data = data_container.get_variable_data(name="psl", frequency="monthly", pressure_level=None)
+        soi = compute_soi(data, base_period=self.baseline_period, detrend=self.detrend)
+        time = [f"{y}-{m:02d}" for y, m in itertools.product(soi.year.values, soi.month.values)]
+        soi = soi.stack(time=("year", "month")).reset_index("time")
+        # Convert time to datetime objects for plotting
+        soi["time"] = time
+        return soi
+
+    
+    def evaluate(self, data_containers):
+        soi_indices = {}
+        spectra = {}
+        for data_container in data_containers:
+            soi_index = self.compute(data_container=data_container)
+            
+            if self.spectrum:
+                fx, fy = self.spectrum(soi_index["psl"].values)
+                spectra[data_container.model_label] = (fx, fy)
+
+            soi_indices[data_container.model_label] = (
+                soi_index.time.values, soi_index["psl"].values
+            )
+        
+        for label, soi_data in soi_indices.items():
+            self.timeseries_plotter.plot(
+                model_data={label: soi_data},
+                fill="sign",
+                colors={label: "k"},
+                linewidths={label: 0.75},
+                title="",
+                variable_name="",
+                xlabel="Time",
+                ylabel="SOI Index",
+                xticks=None,
+                fname=f"SOI_{label}.png"
+            )
+
+        if self.spectrum:
+            self.timeseries_plotter.plot(
+                model_data=spectra,
+                fname="SOI_Spectrum.png",
+                title="",
+                variable_name="",
+                xlabel="Frequency (1/months)",
+                ylabel="Power Spectral Density",
+                colors={
+                    data_container.model_label: 
+                    data_container.model_color 
+                    for data_container in data_containers
+                },
+            )
+
+            
+
+def compute_correlation_matrix(data1: xr.DataArray, data2: xr.DataArray):
+    data1 = data1 - data1.mean()
+    data2 = data2 - data2.mean()
+
+    correlation = (data1 * data2) / np.sqrt((data1 ** 2).sum() * (data2 ** 2).sum())
+
+    return correlation.values
+    
+def compute_eof(data: xr.DataArray, n_modes: int = 1,  var_name: str = "psl"):
+    # Compute covariance matrix
+    data = data - data.mean(dim="time")
+
+    # Flatten lat and lon
+    data = data.transpose("time", "lat", "lon", ...)
+    x = data[var_name].values
+
+    x = x.reshape(x.shape[0], -1)
+
+    # compute covariance matrix across time dimension
+    covariance_matrix = np.cov(x)
+
+    # Eigen decomposition
+    eigenvalues, eigenvectors = np.linalg.eig(covariance_matrix)
+
+    # Sort eigenvalues and eigenvectors
+    idx = np.argsort(np.abs(eigenvalues))[::-1]
+    eigenvalues = eigenvalues[idx]
+    eigenvectors = eigenvectors[:, idx]
+
+    # Select leading modes
+    eof_modes = eigenvectors[:, :n_modes] 
+
+    return np.abs(eof_modes)
+
+
+class ModesOfAnnualVariability(Timeseries):
+    def __init__(
+            self, variables: list[str], detrend=False, 
+            compute_anomalies: bool = False, baseline_period: tuple = None, plotter_kwargs: dict = None):
+        super().__init__(variables, detrend=detrend, compute_anomalies=compute_anomalies, baseline_period=baseline_period, plotter_kwargs=plotter_kwargs)
+
+
+class NorthernAnnularMode:
+    def __init__(self, method="Hurrell", plotter_kwargs: dict = None, baseline_period: tuple = ('1981-01-01', '2010-12-31')):
+        self.method = method
+        self.plotter_kwargs = plotter_kwargs or {}
+        self.baseline_period = baseline_period
+        
+
+        self.timeseries_plotter = TimeseriesPlotter(**self.plotter_kwargs)
+
+    def compute(self, data_container):
+        zg100000 = data_container.get_variable_data(name="zg", frequency="monthly", pressure_level=100000)
+
+        # Select grid points based on method    
+        if self.method == "Hurrell":
+            if zg100000.lat[0] > zg100000.lat[-1]:  # Check if latitudes are in ascending order
+                zg100000_sel = zg100000.sel(lon=slice(90, 220))
+            else:
+                zg100000_sel = zg100000.sel(lon=slice(90, 220))
+            # Average over time to get mean spatial pattern
+            #psl_grouped = psl.groupby(["time.year", "time.month"]).mean(dim="time")  
+            #psl_grouped = psl_grouped.stack(time=["year", "month"]).reset_index("time")
+            
+
+
+            # loading pattern is obtained from baseline period anomaly
+            zg100000_sel_base = zg100000_sel.sel(time=slice(self.baseline_period[0], self.baseline_period[1]))
+            zg100000_anomaly = compute_anomaly(
+                data=zg100000_sel_base, baseline_period=self.baseline_period,
+                mean_groups=["time.year"],
+                baseline_mean_groups=None,
+                standardize=True
+            )
+            zg100000_anomaly = zg100000_anomaly.rename({"year": "time"}).reset_index("time")
+            time = zg100000_anomaly.time.values
+
+            # create time as years for numpy compatibility
+            eof_modes = compute_eof(zg100000_anomaly)
+
+
+            # Project data onto leading EOF mode to get NAOI index
+            # -> first compute anomaly map of psl
+            psl_anomaly = compute_anomaly(
+                data=psl, baseline_period=self.baseline_period,
+                mean_groups=["time.year"],
+                baseline_mean_groups=None,
+                standardize=True
+            )
+
+            psl_anomaly = psl_anomaly.rename({"year": "time"}).reset_index("time")
+
+            # Initialize empty array for NAOI index
+            nao_index = np.empty((len(psl_anomaly.lat), len(psl_anomaly.lon)))
+            psl_anomaly_x = psl_anomaly.psl.values
+            for i in range(len(psl_anomaly.lat)):
+                for j in range(len(psl_anomaly.lon)):
+                    grid_point_data = psl_anomaly_x[:, i, j]
+                    nao_index[i, j] = np.dot(grid_point_data, eof_modes[:, 0])
+                    # Normalize by leading eigenvalue to get standardized index
+                    nao_index[i, j] = nao_index[i, j] / (eof_modes[:, 0].T @ eof_modes[:, 0])
+                   
+            # Contour f plot with cartopy projection to the lat lon map of the NAOI index
+            output_path = self.plotter_kwargs.get("output_path", ".")
+            fpath = f"{output_path}/{data_container.model_label}_NAOI_{self.method}.png"
+            lambert_conformal_projection_plot(
+                data=xr.DataArray(nao_index, coords=[psl_anomaly.lat, psl_anomaly.lon], dims=["lat", "lon"]),
+                central_latitude=55,
+                central_longitude=-25,
+                extent=(-90, 40, 20, 90),
+                fpath=fpath
+            )
+
+    
+        else:
+            raise NotImplementedError(
+                f"{self.method} not implemented for NAOI index calculation."
+            )
+
+        return time, eof_modes
+
+    def evaluate(self, data_containers):
+        eof_modes = {}
+        for data_container in data_containers:
+            time, eof_mode = self.compute(data_container)
+            eof_modes[data_container.model_label] = (range(len(eof_mode)),  eof_mode)
+
+        colors = {
+            data_container.model_label: data_container.model_color for data_container in data_containers
+        }
+
+        self.timeseries_plotter.plot(
+            model_data=eof_modes,
+            colors=colors,
+            title=f"NAO Index - Method: {self.method}",
+            variable_name="",
+            xlabel="Time",
+            ylabel="EOF Mode 1 Amplitude",
+            xticks=time,
+            fname=f"{self.method}_eof_timeseries.png"
+        )
+    
+
+        
+class NorthernAtlanticOscillationIndex:
+    def __init__(self, method="Hurrell", plotter_kwargs: dict = None, baseline_period: tuple = ('1981-01-01', '2010-12-31')):
+        self.method = method
+        self.plotter_kwargs = plotter_kwargs or {}
+        self.baseline_period = baseline_period
+
+
+        self.timeseries_plotter = TimeseriesPlotter(**self.plotter_kwargs)
+
+    def compute(self, data_container):
+        psl = data_container.get_variable_data(name="psl", frequency="monthly", pressure_level=None)
+        # Select grid points based on method    
+        if self.method == "Hurrell":
+            if psl.lat[0] > psl.lat[-1]:  # Check if latitudes are in ascending order
+                psl_sel = psl.sel(lat=slice(80, 20), lon=slice(90, 220))
+            else:
+                psl_sel = psl.sel(lat=slice(20, 80), lon=slice(90, 220))
+
+            # Average over time to get mean spatial pattern
+            #psl_grouped = psl.groupby(["time.year", "time.month"]).mean(dim="time")  
+            #psl_grouped = psl_grouped.stack(time=["year", "month"]).reset_index("time")
+
+            psl_sel_anomaly = compute_anomaly(
+                data=psl_sel, baseline_period=self.baseline_period,
+                mean_groups=["time.year"],
+                baseline_mean_groups=None,
+                standardize=True
+            )
+            
+            psl_sel_anomaly = psl_sel_anomaly.rename({"year": "time"}).reset_index("time")
+            time = psl_sel_anomaly.time.values
+
+            # create time as years for numpy compatibility
+            eof_modes = compute_eof(psl_sel_anomaly)
+
+
+            # Project data onto leading EOF mode to get NAOI index
+            # -> first compute anomaly map of psl
+            psl_anomaly = compute_anomaly(
+                data=psl, baseline_period=self.baseline_period,
+                mean_groups=["time.year"],
+                baseline_mean_groups=None,
+                standardize=True
+            )
+
+            psl_anomaly = psl_anomaly.rename({"year": "time"}).reset_index("time")
+
+            # Initialize empty array for NAOI index
+            nao_index = np.empty((len(psl_anomaly.lat), len(psl_anomaly.lon)))
+            psl_anomaly_x = psl_anomaly.psl.values
+            for i in range(len(psl_anomaly.lat)):
+                for j in range(len(psl_anomaly.lon)):
+                    grid_point_data = psl_anomaly_x[:, i, j]
+                    nao_index[i, j] = np.dot(grid_point_data, eof_modes[:, 0])
+                    # Normalize by leading eigenvalue to get standardized index
+                    nao_index[i, j] = nao_index[i, j] 
+                   
+            # Contour f plot with cartopy projection to the lat lon map of the NAOI index
+            output_path = self.plotter_kwargs.get("output_path", ".")
+            fpath = f"{output_path}/{data_container.model_label}_NAOI_{self.method}.png"
+            lambert_conformal_projection_plot(
+                data=xr.DataArray(nao_index, coords=[psl_anomaly.lat, psl_anomaly.lon], dims=["lat", "lon"]),
+                central_latitude=55,
+                central_longitude=-25,
+                extent=(-90, 40, 20, 90),
+                fpath=fpath
+            )
+
+    
+        else:
+            raise NotImplementedError(
+                f"{self.method} not implemented for NAOI index calculation."
+            )
+
+        return time, eof_modes
+
+    def evaluate(self, data_containers):
+        eof_modes = {}
+        for data_container in data_containers:
+            time, eof_mode = self.compute(data_container)
+            eof_modes[data_container.model_label] = (range(len(eof_mode)),  eof_mode)
+
+        colors = {
+            data_container.model_label: data_container.model_color for data_container in data_containers
+        }
+
+        self.timeseries_plotter.plot(
+            model_data=eof_modes,
+            colors=colors,
+            title=f"NAO Index - Method: {self.method}",
+            variable_name="",
+            xlabel="Time",
+            ylabel="EOF Mode 1 Amplitude",
+            xticks=time,
+            fname=f"{self.method}_eof_timeseries.png"
+        )
+        
+
+################################################################################
+
+'''
 class ClimateMetric:
     """
     Base class for any climate metric
@@ -65,6 +801,12 @@ class ClimateMetric:
         if fontdict is not None:
             self.fontdict.update(fontdict)
             
+        fontdict=None
+    ):  
+        
+        if fontdict is not None:
+            self.fontdict.update(fontdict)
+            
         self.variables = variables
         self.use_lat_weighting = use_lat_weighting
         self.latitude = latitude
@@ -81,6 +823,11 @@ class ClimateMetric:
         )
 
         self.output_path = output_path
+
+    def rmse(self, data1, data2):
+        rmse =  np.sqrt(((data1 - data2) ** 2).mean()).item()
+        print(rmse)
+        return rmse
 
     def rmse(self, data1, data2):
         rmse =  np.sqrt(((data1 - data2) ** 2).mean()).item()
@@ -109,6 +856,7 @@ class SpatialMetric(ClimateMetric):
         base_period=None,
         output_path=".",
         fontdict=None
+        fontdict=None
     ):
         super().__init__(
             variables,
@@ -119,6 +867,7 @@ class SpatialMetric(ClimateMetric):
             base_period,
             output_path,
             fontdict=fontdict
+            fontdict=fontdict
         )
 
         self.time = time
@@ -126,6 +875,7 @@ class SpatialMetric(ClimateMetric):
         self.y = y
 
     def select_time(self, data, time):
+        if time == "annual":
         if time == "annual":
             data = data.mean(dim="time")
         elif time in ["DJF", "MAM", "JJA", "SON"]:
@@ -148,6 +898,7 @@ class XYPlot(SpatialMetric):
         variables,
         plot_type="contour",
         time="annual",
+        time="annual",
         x="latitude",
         y="longitude",
         use_lat_weighting="weatherbench",
@@ -156,8 +907,11 @@ class XYPlot(SpatialMetric):
         dpi=150,
         diverging_cmap="bwr",
         sequential_cmap="PuBu",
+        diverging_cmap="bwr",
+        sequential_cmap="PuBu",
         base_period=None,
         output_path=".",
+        fontdict=None
         fontdict=None
     ):
         super().__init__(
@@ -172,15 +926,21 @@ class XYPlot(SpatialMetric):
             base_period=base_period,
             output_path=output_path,
             fontdict=fontdict
+            fontdict=fontdict
         )
         self.plot_type = plot_type
         self.output_path = output_path + f"/{x}_{y}_plots"
         self.sequential_cmap = sequential_cmap
         self.diverging_cmap = diverging_cmap
+        self.sequential_cmap = sequential_cmap
+        self.diverging_cmap = diverging_cmap
         os.makedirs(self.output_path, exist_ok=True)
+    
     
 
     def visualize_on_ax(
+        self, fig, ax, data, variable_name, time, 
+        model_label, cmap, norm=None, infotext=""
         self, fig, ax, data, variable_name, time, 
         model_label, cmap, norm=None, infotext=""
     ):
@@ -210,10 +970,12 @@ class XYPlot(SpatialMetric):
                 fname=f"{self.y}_{self.x}_plot_{time}_{variable_name}_{model_label}.png",
                 output_path=self.output_path,
                 title="",#f"{model_label} - {time}, Variable: {variable_name}",
+                title="",#f"{model_label} - {time}, Variable: {variable_name}",
                 ax=None,
                 cbar_label=self.units[variable_name]
                 if variable_name in self.units
                 else "",
+                cmap=cmap,
                 cmap=cmap,
                 fontdict=self.fontdict,
                 infotext=infotext,
@@ -223,6 +985,7 @@ class XYPlot(SpatialMetric):
             return
         elif self.plot_type == "contour":
                 
+                
             CS = ax.contourf(
                 data[self.x],
                 data[self.y],
@@ -230,10 +993,17 @@ class XYPlot(SpatialMetric):
                 cmap="coolwarm",
                 interpolation="bilinear",
                 levels=20,
+                levels=20,
             )
+
 
             CS2 = ax.contour(CS, levels=CS.levels, colors="k")
             plt.gca().set_aspect("auto")
+            if self.y == "level":
+                ax.invert_yaxis()
+                # also invert the data for contour lines
+                data.values = data.values[-1::-1, :]
+                
             if self.y == "level":
                 ax.invert_yaxis()
                 # also invert the data for contour lines
@@ -263,6 +1033,10 @@ class XYPlot(SpatialMetric):
         #    model_label + " - " + time_title + ", Variable: " + variable_name,
         #    fontsize=self.fontdict["axes.titlesize"],
         #)
+        #ax.set_title(
+        #    model_label + " - " + time_title + ", Variable: " + variable_name,
+        #    fontsize=self.fontdict["axes.titlesize"],
+        #)
         output_path = self.output_path + f"/{self.y}_{self.x}_plot_{time}_{variable_name}_{model_label}.png"
         
         plt.savefig(
@@ -278,12 +1052,15 @@ class XYPlot(SpatialMetric):
 
     def evaluate(self, model_containers):
         if any ([model.is_reference for model in model_containers]):
+        if any ([model.is_reference for model in model_containers]):
             ground_truth_data_index = [
                 i
                 for i, model in enumerate(model_containers)
                 if model.is_reference
+                if model.is_reference
             ][0]
             ground_truth_data = model_containers[ground_truth_data_index].data
+            model_reference_label = model_containers[ground_truth_data_index].label
             model_reference_label = model_containers[ground_truth_data_index].label
         else:
             ground_truth_data = None
@@ -304,11 +1081,14 @@ class XYPlot(SpatialMetric):
                 data = data.mean(dim=dims_to_mean)
 
                 if model_data.label.lower() != model_reference_label.lower() and ground_truth_data is not None:
+                if model_data.label.lower() != model_reference_label.lower() and ground_truth_data is not None:
                     print(
+                        f"Difference Map {model_data.label} using {model_reference_label}...")
                         f"Difference Map {model_data.label} using {model_reference_label}...")
                     gt_data = self.select_time(ground_truth_data, time)
                     gt_data = gt_data.mean(dim=dims_to_mean)
                     diff_data = data - gt_data
+                    
                     
                 else:
                     diff_data = None
@@ -324,13 +1104,16 @@ class XYPlot(SpatialMetric):
                         plot_data = data[variable_name]
                     else:
                         print(data)
+                        print(data)
                         plot_data = data[variable_name].sel(level=lvl)
                     self.visualize_on_ax(
+                        fig, ax, plot_data, variable_name, time, model_label=model_data.label, cmap=self.sequential_cmap
                         fig, ax, plot_data, variable_name, time, model_label=model_data.label, cmap=self.sequential_cmap
                     )
 
                     if diff_data:
                         print(
+                            f"Visualizing Difference Map XY plot for variable: {short_var_name}")
                             f"Visualizing Difference Map XY plot for variable: {short_var_name}")
                         fig, ax = self.create_figure()
                         if lvl is None:
@@ -339,8 +1122,19 @@ class XYPlot(SpatialMetric):
                                 data[variable_name].values,
                                 gt_data[variable_name].values
                             )
+                            rmse = self.rmse(
+                                data[variable_name].values,
+                                gt_data[variable_name].values
+                            )
                         else:
                             plot_data = diff_data[variable_name].sel(level=lvl)
+                            rmse = self.rmse(
+                                data[variable_name].sel(level=lvl).values,
+                                gt_data[variable_name].sel(level=lvl).values
+                            )
+
+                        norm = CenteredNorm(vcenter=0)
+
                             rmse = self.rmse(
                                 data[variable_name].sel(level=lvl).values,
                                 gt_data[variable_name].sel(level=lvl).values
@@ -356,7 +1150,11 @@ class XYPlot(SpatialMetric):
                             time,
                             cmap=self.diverging_cmap,
                             model_label=model_data.label + " diffmap",
+                            cmap=self.diverging_cmap,
+                            model_label=model_data.label + " diffmap",
                             norm=norm,
+                            infotext="Mean=" +
+                            f"{float(plot_data.mean().values):.2f}, RMSE={rmse:.2f}",
                             infotext="Mean=" +
                             f"{float(plot_data.mean().values):.2f}, RMSE={rmse:.2f}",
                         )
@@ -491,7 +1289,9 @@ class AnnualCycle(TimeSeries):
                 )
                 ax.set_xlabel("Time")
                 ax.set_ylabel(f"{self.units.get(variable_name, '')}")
+                ax.set_ylabel(f"{self.units.get(variable_name, '')}")
             plt.grid()
+            plt.legend(fontsize=self.fontdict["axes.labelsize"])
             plt.legend(fontsize=self.fontdict["axes.labelsize"])
             plt.savefig(self.output_path + f"/annual_cycle_{short_var_name}.png")
 
@@ -559,6 +1359,7 @@ class AnomalyKDE(TimeSeries):
                     linewidth=self.linewidth,
                 )
                 #ax0.set_title(f"KDE - {short_var_name}")
+                #ax0.set_title(f"KDE - {short_var_name}")
                 ax0.set_xlabel("Density")
 
             ax1 = fig.add_subplot(gs[1])
@@ -576,6 +1377,7 @@ class AnomalyKDE(TimeSeries):
                     xtick_labels=ano.time.values,
                     color=model_containers[i].data_color,
                 )
+            #ax1.set_title(f"Annual Cycle - {short_var_name}")
             #ax1.set_title(f"Annual Cycle - {short_var_name}")
             ax1.set_xlabel("Time")
             ax1.grid()
@@ -613,6 +1415,7 @@ class RadialSpectrum(ClimateMetric):
         )
         ax.invert_xaxis()
         ax.set_xlabel("Wavelength (km)")
+        # Mirror graph 
         # Mirror graph 
         ax.grid(which="both", linestyle="-.", linewidth=0.2)
 
@@ -680,6 +1483,7 @@ class RadialSpectrum(ClimateMetric):
                     )
             ax.set_xlabel("Wavenumber")
             ax.set_ylabel("Power Spectral Density")
+            ax.legend(fontsize=self.fontdict["axes.labelsize"])
             ax.legend(fontsize=self.fontdict["axes.labelsize"])
             output_path = self.output_path + \
                 f"/radial_spectrum_{short_var_name}.png"
@@ -760,6 +1564,7 @@ class SouthernOscillationIndex(TimeSeries):
             plot_timeseries(
                 x=soi_index,
                 xticks=xticks,
+                title="",
                 title="",
                 ylabel="SOI Index",
                 xlabel="Time",
@@ -914,4 +1719,4 @@ class RegressionAnalysis(ClimateMetric):
                 norm=norm,
             )
             print("")
-        
+        '''
