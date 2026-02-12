@@ -31,6 +31,10 @@ class GeoClimate:
         
             container = CMORDataContainer(**v)
 
+<<<<<<< HEAD
+=======
+            container._load_data_from_paths()
+>>>>>>> main
             self.data_containers.append(container)
 
     def _init_metrics(self, metric_cfgs):
@@ -39,12 +43,20 @@ class GeoClimate:
         metric_cfgs = metric_cfgs["metrics"]
         for metric_name, metric_cfg in metric_cfgs.items():
             print("Adding metric:", metric_name)
+<<<<<<< HEAD
 
             # preprend global output path to metric output path
             metric_cfg["plotter_kwargs"]["output_path"] = \
                 self.output_path + "/" + metric_cfg["plotter_kwargs"].get("output_path", "")
             metric_cfg = OmegaConf.to_container(cfg=metric_cfg, resolve=True)
             metric = instantiate(metric_cfg)
+=======
+            #metric = getattr(metric_modules, metric_cfg["target"])(
+            #    output_path=self.output_path,
+            #    **metric_cfg["params"]
+            #)
+            metric = instantiate(metric_cfg, output_path=self.output_path)
+>>>>>>> main
             self.metric_objects[metric_name] = metric
 
 

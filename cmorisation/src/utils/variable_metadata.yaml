@@ -102,6 +102,22 @@ zg:
   cell_methods: "time: mean"
   cell_measures: "area: areacella"
 
+wap: 
+  standard_name: "lagrangian_tendency_of_air_pressure"
+  long_name: "Omega (=dp/dt)"
+  comment: "Omega (vertical velocity in pressure coordinates, positive downwards)"
+  units: "Pa s-1"
+  cell_methods: "time: mean"
+  cell_measures: "area: areacella" 
+
+siconc:
+  standard_name: "sea_ice_area_fraction"
+  long_name: "Sea-Ice Area Percentage (Ocean Grid)"
+  comment: "Percentage of grid cell covered by sea ice" 
+  units: "%"
+  cell_methods: "area: mean where sea time: mean"
+  cell_measures: "area: areacello" 
+
 sftlf:
   standard_name: land_area_fraction
   long_name: Land Area Fraction

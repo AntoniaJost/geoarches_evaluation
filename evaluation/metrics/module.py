@@ -801,6 +801,12 @@ class ClimateMetric:
         if fontdict is not None:
             self.fontdict.update(fontdict)
             
+        fontdict=None
+    ):  
+        
+        if fontdict is not None:
+            self.fontdict.update(fontdict)
+            
         self.variables = variables
         self.use_lat_weighting = use_lat_weighting
         self.latitude = latitude
@@ -817,6 +823,11 @@ class ClimateMetric:
         )
 
         self.output_path = output_path
+
+    def rmse(self, data1, data2):
+        rmse =  np.sqrt(((data1 - data2) ** 2).mean()).item()
+        print(rmse)
+        return rmse
 
     def rmse(self, data1, data2):
         rmse =  np.sqrt(((data1 - data2) ** 2).mean()).item()
@@ -845,6 +856,7 @@ class SpatialMetric(ClimateMetric):
         base_period=None,
         output_path=".",
         fontdict=None
+        fontdict=None
     ):
         super().__init__(
             variables,
@@ -855,6 +867,7 @@ class SpatialMetric(ClimateMetric):
             base_period,
             output_path,
             fontdict=fontdict
+            fontdict=fontdict
         )
 
         self.time = time
@@ -862,6 +875,7 @@ class SpatialMetric(ClimateMetric):
         self.y = y
 
     def select_time(self, data, time):
+        if time == "annual":
         if time == "annual":
             data = data.mean(dim="time")
         elif time in ["DJF", "MAM", "JJA", "SON"]:
@@ -884,6 +898,7 @@ class XYPlot(SpatialMetric):
         variables,
         plot_type="contour",
         time="annual",
+        time="annual",
         x="latitude",
         y="longitude",
         use_lat_weighting="weatherbench",
@@ -892,8 +907,11 @@ class XYPlot(SpatialMetric):
         dpi=150,
         diverging_cmap="bwr",
         sequential_cmap="PuBu",
+        diverging_cmap="bwr",
+        sequential_cmap="PuBu",
         base_period=None,
         output_path=".",
+        fontdict=None
         fontdict=None
     ):
         super().__init__(
@@ -908,15 +926,21 @@ class XYPlot(SpatialMetric):
             base_period=base_period,
             output_path=output_path,
             fontdict=fontdict
+            fontdict=fontdict
         )
         self.plot_type = plot_type
         self.output_path = output_path + f"/{x}_{y}_plots"
         self.sequential_cmap = sequential_cmap
         self.diverging_cmap = diverging_cmap
+        self.sequential_cmap = sequential_cmap
+        self.diverging_cmap = diverging_cmap
         os.makedirs(self.output_path, exist_ok=True)
+    
     
 
     def visualize_on_ax(
+        self, fig, ax, data, variable_name, time, 
+        model_label, cmap, norm=None, infotext=""
         self, fig, ax, data, variable_name, time, 
         model_label, cmap, norm=None, infotext=""
     ):
@@ -946,10 +970,12 @@ class XYPlot(SpatialMetric):
                 fname=f"{self.y}_{self.x}_plot_{time}_{variable_name}_{model_label}.png",
                 output_path=self.output_path,
                 title="",#f"{model_label} - {time}, Variable: {variable_name}",
+                title="",#f"{model_label} - {time}, Variable: {variable_name}",
                 ax=None,
                 cbar_label=self.units[variable_name]
                 if variable_name in self.units
                 else "",
+                cmap=cmap,
                 cmap=cmap,
                 fontdict=self.fontdict,
                 infotext=infotext,
@@ -959,6 +985,7 @@ class XYPlot(SpatialMetric):
             return
         elif self.plot_type == "contour":
                 
+                
             CS = ax.contourf(
                 data[self.x],
                 data[self.y],
@@ -966,10 +993,17 @@ class XYPlot(SpatialMetric):
                 cmap="coolwarm",
                 interpolation="bilinear",
                 levels=20,
+                levels=20,
             )
+
 
             CS2 = ax.contour(CS, levels=CS.levels, colors="k")
             plt.gca().set_aspect("auto")
+            if self.y == "level":
+                ax.invert_yaxis()
+                # also invert the data for contour lines
+                data.values = data.values[-1::-1, :]
+                
             if self.y == "level":
                 ax.invert_yaxis()
                 # also invert the data for contour lines
@@ -999,6 +1033,10 @@ class XYPlot(SpatialMetric):
         #    model_label + " - " + time_title + ", Variable: " + variable_name,
         #    fontsize=self.fontdict["axes.titlesize"],
         #)
+        #ax.set_title(
+        #    model_label + " - " + time_title + ", Variable: " + variable_name,
+        #    fontsize=self.fontdict["axes.titlesize"],
+        #)
         output_path = self.output_path + f"/{self.y}_{self.x}_plot_{time}_{variable_name}_{model_label}.png"
         
         plt.savefig(
@@ -1014,12 +1052,15 @@ class XYPlot(SpatialMetric):
 
     def evaluate(self, model_containers):
         if any ([model.is_reference for model in model_containers]):
+        if any ([model.is_reference for model in model_containers]):
             ground_truth_data_index = [
                 i
                 for i, model in enumerate(model_containers)
                 if model.is_reference
+                if model.is_reference
             ][0]
             ground_truth_data = model_containers[ground_truth_data_index].data
+            model_reference_label = model_containers[ground_truth_data_index].label
             model_reference_label = model_containers[ground_truth_data_index].label
         else:
             ground_truth_data = None
@@ -1040,11 +1081,14 @@ class XYPlot(SpatialMetric):
                 data = data.mean(dim=dims_to_mean)
 
                 if model_data.label.lower() != model_reference_label.lower() and ground_truth_data is not None:
+                if model_data.label.lower() != model_reference_label.lower() and ground_truth_data is not None:
                     print(
+                        f"Difference Map {model_data.label} using {model_reference_label}...")
                         f"Difference Map {model_data.label} using {model_reference_label}...")
                     gt_data = self.select_time(ground_truth_data, time)
                     gt_data = gt_data.mean(dim=dims_to_mean)
                     diff_data = data - gt_data
+                    
                     
                 else:
                     diff_data = None
@@ -1060,13 +1104,16 @@ class XYPlot(SpatialMetric):
                         plot_data = data[variable_name]
                     else:
                         print(data)
+                        print(data)
                         plot_data = data[variable_name].sel(level=lvl)
                     self.visualize_on_ax(
+                        fig, ax, plot_data, variable_name, time, model_label=model_data.label, cmap=self.sequential_cmap
                         fig, ax, plot_data, variable_name, time, model_label=model_data.label, cmap=self.sequential_cmap
                     )
 
                     if diff_data:
                         print(
+                            f"Visualizing Difference Map XY plot for variable: {short_var_name}")
                             f"Visualizing Difference Map XY plot for variable: {short_var_name}")
                         fig, ax = self.create_figure()
                         if lvl is None:
@@ -1075,8 +1122,19 @@ class XYPlot(SpatialMetric):
                                 data[variable_name].values,
                                 gt_data[variable_name].values
                             )
+                            rmse = self.rmse(
+                                data[variable_name].values,
+                                gt_data[variable_name].values
+                            )
                         else:
                             plot_data = diff_data[variable_name].sel(level=lvl)
+                            rmse = self.rmse(
+                                data[variable_name].sel(level=lvl).values,
+                                gt_data[variable_name].sel(level=lvl).values
+                            )
+
+                        norm = CenteredNorm(vcenter=0)
+
                             rmse = self.rmse(
                                 data[variable_name].sel(level=lvl).values,
                                 gt_data[variable_name].sel(level=lvl).values
@@ -1092,7 +1150,11 @@ class XYPlot(SpatialMetric):
                             time,
                             cmap=self.diverging_cmap,
                             model_label=model_data.label + " diffmap",
+                            cmap=self.diverging_cmap,
+                            model_label=model_data.label + " diffmap",
                             norm=norm,
+                            infotext="Mean=" +
+                            f"{float(plot_data.mean().values):.2f}, RMSE={rmse:.2f}",
                             infotext="Mean=" +
                             f"{float(plot_data.mean().values):.2f}, RMSE={rmse:.2f}",
                         )
@@ -1227,7 +1289,9 @@ class AnnualCycle(TimeSeries):
                 )
                 ax.set_xlabel("Time")
                 ax.set_ylabel(f"{self.units.get(variable_name, '')}")
+                ax.set_ylabel(f"{self.units.get(variable_name, '')}")
             plt.grid()
+            plt.legend(fontsize=self.fontdict["axes.labelsize"])
             plt.legend(fontsize=self.fontdict["axes.labelsize"])
             plt.savefig(self.output_path + f"/annual_cycle_{short_var_name}.png")
 
@@ -1295,6 +1359,7 @@ class AnomalyKDE(TimeSeries):
                     linewidth=self.linewidth,
                 )
                 #ax0.set_title(f"KDE - {short_var_name}")
+                #ax0.set_title(f"KDE - {short_var_name}")
                 ax0.set_xlabel("Density")
 
             ax1 = fig.add_subplot(gs[1])
@@ -1312,6 +1377,7 @@ class AnomalyKDE(TimeSeries):
                     xtick_labels=ano.time.values,
                     color=model_containers[i].data_color,
                 )
+            #ax1.set_title(f"Annual Cycle - {short_var_name}")
             #ax1.set_title(f"Annual Cycle - {short_var_name}")
             ax1.set_xlabel("Time")
             ax1.grid()
@@ -1349,6 +1415,7 @@ class RadialSpectrum(ClimateMetric):
         )
         ax.invert_xaxis()
         ax.set_xlabel("Wavelength (km)")
+        # Mirror graph 
         # Mirror graph 
         ax.grid(which="both", linestyle="-.", linewidth=0.2)
 
@@ -1416,6 +1483,7 @@ class RadialSpectrum(ClimateMetric):
                     )
             ax.set_xlabel("Wavenumber")
             ax.set_ylabel("Power Spectral Density")
+            ax.legend(fontsize=self.fontdict["axes.labelsize"])
             ax.legend(fontsize=self.fontdict["axes.labelsize"])
             output_path = self.output_path + \
                 f"/radial_spectrum_{short_var_name}.png"
@@ -1496,6 +1564,7 @@ class SouthernOscillationIndex(TimeSeries):
             plot_timeseries(
                 x=soi_index,
                 xticks=xticks,
+                title="",
                 title="",
                 ylabel="SOI Index",
                 xlabel="Time",

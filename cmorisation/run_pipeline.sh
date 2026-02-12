@@ -40,34 +40,36 @@ mkdir -p "${RUN_DIR}/logs" \
          "${RUN_DIR}/3_split" \
          "${RUN_DIR}/4_cmorisation"
 
-# Create a per-run config to pass RUN_DIR, ENSEMBLE and MODEL_TAG
-export ENSEMBLE MODEL_TAG ZG_TO_500 NAME TIMESPAN_DAILY
-envsubst '${RUN_DIR} ${ENSEMBLE} ${MODEL_TAG} ${ZG_TO_500} ${NAME} ${TIMESPAN_DAILY}' < config.yaml > "${RUN_DIR}/config.yaml"
-echo "Wrote per-run config: ${RUN_DIR}/config.yaml"
+# iterate over all daily timespans
+for (( i=0; i<${#TIMESPANS_DAILY[@]}; i++ )); do # (https://www.gnu.org/software/bash/manual/bash.html) search for ${#parameter}
+  TIMESPAN_DAILY="${TIMESPANS_DAILY[$i]}"
+  printf "Iteration %d: TIMESPAN_DAILY=%s\n" "$i" "$TIMESPAN_DAILY"
 
-# DO NOT CHANGE THESE! 
-MERGED_FILE="${RUN_DIR}/1_means/daily_means/daily_${TAG}_${TIMESPAN}.nc"
-MONTHLY_MEAN_FILE="${RUN_DIR}/1_means/monthly_means/monthly_${TAG}_${TIMESPAN}.nc"
+  export ENSEMBLE MODEL_TAG ZG_TO_500 NAME TIMESPAN_DAILY LEVELS AIMIP RUN_DIR REPO_DIR LOG_DIR
+  envsubst '${RUN_DIR} ${REPO_DIR} ${LOG_DIR} ${ENSEMBLE} ${MODEL_TAG} ${ZG_TO_500} ${NAME} ${TIMESPAN_DAILY} ${LEVELS} ${AIMIP}' < config.yaml > "${RUN_DIR}/config.yaml" # Create a per-run config to pass RUN_DIR, ENSEMBLE and MODEL_TAG
 
-# Merge all .nc files if file doesn't already exist
-if [ ! -s "${MERGED_FILE}" ]; then
-  echo "Merging daily files into: ${MERGED_FILE}"
-  cdo mergetime "${INPUT_DIR}/day_${TAG}_*.nc" "${MERGED_FILE}"
-else
-  echo "Skipping mergetime: ${MERGED_FILE} already exists."
-fi
+  echo "Wrote per-run config: ${RUN_DIR}/config.yaml"
 
-# Compute monthly means if file doesn't already exist
-if [ ! -s "${MONTHLY_MEAN_FILE}" ]; then
-  echo "Computing monthly mean into: ${MONTHLY_MEAN_FILE}"
-  cdo monmean "${MERGED_FILE}" "${MONTHLY_MEAN_FILE}"
-else
-  echo "Skipping monmean: ${MONTHLY_MEAN_FILE} already exists."
-fi
+  # DO NOT CHANGE THESE! 
+  MERGED_FILE="${RUN_DIR}/1_means/daily_means/daily_${TAG}_${TIMESPAN}.nc"
+  MONTHLY_MEAN_FILE="${RUN_DIR}/1_means/monthly_means/monthly_${TAG}_${TIMESPAN}.nc"
+
+  # Merge all .nc files if file doesn't already exist
+  if [ ! -s "${MERGED_FILE}" ]; then
+    echo "Merging daily files into: ${MERGED_FILE}"
+    cdo mergetime "${INPUT_DIR}/day_${TAG}_*.nc" "${MERGED_FILE}"
+  else
+    echo "Skipping mergetime: ${MERGED_FILE} already exists."
+  fi
+
+  # Compute monthly means if file doesn't already exist
+  if [ ! -s "${MONTHLY_MEAN_FILE}" ]; then
+    echo "Computing monthly mean into: ${MONTHLY_MEAN_FILE}"
+    cdo monmean "${MERGED_FILE}" "${MONTHLY_MEAN_FILE}"
+  else
+    echo "Skipping monmean: ${MONTHLY_MEAN_FILE} already exists."
+  fi
 
 python3 src/pipeline.py --config "${RUN_DIR}/config.yaml"
 
 echo "Done. Outputs under: ${RUN_DIR}"
-
-# In case you want to move your output to a different location
-# bash move.sh
