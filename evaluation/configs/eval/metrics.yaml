@@ -1,7 +1,7 @@
 defaults:
   - _self_
-  #- metrics/seasonal_means.yaml
-  #- metrics/annual_cycle.yaml
+  - metrics/nam.yaml
   - metrics/nao.yaml
-  
-  #- metrics/soi.yaml
+  #- metrics/seasonal_means.yaml
+  - metrics/annual_cycle.yaml
+  - metrics/soi.yaml

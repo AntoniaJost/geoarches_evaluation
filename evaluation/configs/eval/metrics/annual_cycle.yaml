@@ -1,8 +1,9 @@
-annual_cycle:
+AnnualCycle:
   _target_: metrics.module.SeasonalCycles
   variables:
     - {"name": "tos", "pressure_level": null}
     - {"name": "tas", "pressure_level": null}
+    - {"name": "zg", "pressure_level": 100000}
   mean_groups:
     - "time.year"
     - "time.month"

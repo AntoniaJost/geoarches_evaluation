@@ -1,0 +1,6 @@
+NorthernAnnularMode:
+  _target_: metrics.module.NorthernAnnularMode
+  method: "EOF"
+  frequency: "monthly"
+  plotter_kwargs:
+    output_path: "NAM"

@@ -1,4 +1,4 @@
-nao:
+NorthernAtlanticOscillationIndex:
   _target_: metrics.module.NorthernAtlanticOscillationIndex
   method: "Hurrell"
   plotter_kwargs:

@@ -31,10 +31,6 @@ class GeoClimate:
         
             container = CMORDataContainer(**v)
 
-<<<<<<< HEAD
-=======
-            container._load_data_from_paths()
->>>>>>> main
             self.data_containers.append(container)
 
     def _init_metrics(self, metric_cfgs):
@@ -43,20 +39,12 @@ class GeoClimate:
         metric_cfgs = metric_cfgs["metrics"]
         for metric_name, metric_cfg in metric_cfgs.items():
             print("Adding metric:", metric_name)
-<<<<<<< HEAD
 
             # preprend global output path to metric output path
             metric_cfg["plotter_kwargs"]["output_path"] = \
                 self.output_path + "/" + metric_cfg["plotter_kwargs"].get("output_path", "")
             metric_cfg = OmegaConf.to_container(cfg=metric_cfg, resolve=True)
             metric = instantiate(metric_cfg)
-=======
-            #metric = getattr(metric_modules, metric_cfg["target"])(
-            #    output_path=self.output_path,
-            #    **metric_cfg["params"]
-            #)
-            metric = instantiate(metric_cfg, output_path=self.output_path)
->>>>>>> main
             self.metric_objects[metric_name] = metric
 
 
@@ -113,17 +101,23 @@ class CMORDataContainer:
         self.grid_type = grid_type
         self.roll_longitude = roll_longitude
         if path_to_daily_data is not None:
-            self.path_to_daily_data = path_to_daily_data
+            if not isinstance(path_to_daily_data, str) and path_to_daily_data is not None:
+                self.path_to_daily_data = list(path_to_daily_data)
+            else:
+                self.path_to_daily_data = path_to_daily_data
+
             self.load_daily_data()
+
         if path_to_monthly_data is not None:
-            self.path_to_monthly_data = path_to_monthly_data
+            if not isinstance(path_to_monthly_data, str) and path_to_monthly_data is not None:
+                self.path_to_monthly_data = list(path_to_monthly_data)
+            else:
+                self.path_to_monthly_data = path_to_monthly_data
             self.load_monthly_data()
 
         if variable_names is not None:
             self.variable_names = variable_names
-        
-        self.path_to_monthly_data = path_to_monthly_data
-        self.path_to_daily_data = path_to_daily_data
+
         self.is_reference = is_reference
 
         self.model_label = model_label
@@ -132,6 +126,43 @@ class CMORDataContainer:
         print("Initialized CmorDataContainer for ", self.model_label)
         print("#" * 72)
 
+    def load_data(self, path, var_name):
+        if isinstance(path, list):
+            fpaths = []
+            for p in path:
+                fpaths += glob(p + f"/{var_name}/" + "/**/*.nc", recursive=True)
+        else:
+            fpaths = glob(path + f"/{var_name}/" + "/**/*.nc", recursive=True)
+            
+        fpaths.sort()
+        if fpaths == []:
+            print(f"!!! No files found for variable {var_name} in path {path}/{var_name}/")
+            return None
+        
+        print(f"... {var_name} from:", fpaths, " ...", end=" ")
+        var = []
+        for f in fpaths:
+            var.append(xr.open_mfdataset(f, combine="by_coords"))
+        if len(var) > 1:
+            var = xr.concat(var, dim="member")
+            var_mean = var.mean("member")
+            var_std = var.std("member")
+            # Combine into a single dataset with mean and std
+            var = xr.concat([var_mean, var_std], dim="stat").assign_coords(stat=["mean", "std"])
+
+        else:
+            var = var[0]
+
+        if self.period is not None:
+            var = var.sel(
+                time=slice(self.period[0], self.period[1])
+            )
+        if self.roll_longitude:
+            var = var.roll(
+                lon=-len(var.lon) // 2, roll_coords=False
+            )  # Roll longitude to match data
+        print("Done")
+        return var
 
     def load_monthly_data(self):
         """
@@ -145,22 +176,8 @@ class CMORDataContainer:
         # Data is given per variable
         data_vars = {}
         for var_short, _ in self.variable_names.items():
-            fpaths = glob(self.path_to_monthly_data + f"/{var_short}/" + "/**/*.nc", recursive=True)
-            fpaths.sort()
-            if fpaths == []:
-                print(f"!!! No files found for variable {var_short} in path {self.path_to_monthly_data}/{var_short}/")
-                continue
-            print(f"... {var_short} from:", fpaths, " ...", end=" ")
-            data_vars[var_short] = xr.open_mfdataset(fpaths, combine="by_coords")
-            if self.period is not None:
-                data_vars[var_short] = data_vars[var_short].sel(
-                    time=slice(self.period[0], self.period[1])
-                )
-            if self.roll_longitude:
-                data_vars[var_short] = data_vars[var_short].roll(
-                    lon=-len(data_vars[var_short].lon) // 2, roll_coords=False
-                )  # Roll longitude to match data
-            print("Done")
+            data_vars[var_short] = self.load_data(self.path_to_monthly_data, var_short)
+
         print("--> Finished loading monthly data.")
         
         
@@ -179,27 +196,17 @@ class CMORDataContainer:
         # Data is given per variable
         data_vars = {}
         for var_short, _ in self.variable_names.items():
-            fpaths = glob(self.path_to_daily_data + f"/{var_short}/" + "/**/*.nc", recursive=True)
-            fpaths.sort()
-            if fpaths == []:
-                print(f"!!! No files found for variable {var_short} in path {self.path_to_daily_data}/{var_short}/")
-                continue
-            print(f"... {var_short} from:", fpaths, " ...", end=" ")
-            data_vars[var_short] = xr.open_mfdataset(fpaths, combine="by_coords")
-            if self.period is not None:
-                data_vars[var_short] = data_vars[var_short].sel(
-                    time=slice(self.period[0], self.period[1])
-                )
-            if self.roll_longitude:
-                data_vars[var_short] = data_vars[var_short].roll(
-                    lon=-len(data_vars[var_short].lon) // 2, roll_coords=False
-                )  # Roll longitude to match data
-            print("Done")
 
-
-
+            data_vars[var_short] = self.load_data(self.path_to_daily_data, var_short)
+  
         print("--> Finished loading daily data.")
         self.daily_data = data_vars
+
+    def yield_data(self, data_arr):
+        if "stat" in data_arr.coords and "mean" in data_arr.coords["stat"]:
+            return data_arr.sel(stat="mean", drop=True)
+        else:
+            return data_arr
 
     def get_variable_data(self, name, pressure_level=None, frequency="monthly"):
         """
@@ -214,11 +221,11 @@ class CMORDataContainer:
         if frequency == "monthly":
             assert hasattr(self, "monthly_data"), \
             "Monthly data not loaded. Please load monthly data first."
-            data = self.monthly_data[name]
+            data = self.yield_data(self.monthly_data[name])
         elif frequency == "daily":
             assert hasattr(self, "daily_data"), \
             "Daily data not loaded. Please load daily data first."
-            data = self.daily_data[name]
+            data = self.yield_data(self.daily_data[name])
         else:
             raise ValueError("Frequency must be either 'monthly' or 'daily'.")
         

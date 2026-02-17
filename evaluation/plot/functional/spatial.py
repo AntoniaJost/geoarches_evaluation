@@ -14,7 +14,7 @@ from geoarches.dataloaders.era5 import surface_variables_short, level_variables_
 
 fontdict = {"font.size": 12}
 
-def cut_axes_to_lambert_conformal_projection(
+def set_boundary_to_lambert_conformal_projection(
     ax, central_longitude=-25, central_latitude=55, lowest_lat_cut=20, 
     highest_lat_cut=80, lon_extent=(-90, 40)
 ):
@@ -77,13 +77,50 @@ def cut_axes_to_lambert_conformal_projection(
 
     return ax
 
-def lambert_conformal_projection_plot(
+def set_boundary_to_azimuthal_equidistant_projection(
+    ax, central_longitude=-25, central_latitude=55, lowest_lat_cut=20, 
+    highest_lat_cut=80, lon_extent=(-90, 40)
+):
+    # For the azimuthal equidistant projection, we can simply set the extent 
+    # of the axes to the desired extent, as the projection is already circular 
+    # and does not have the same issues
+    ax.set_boundary(lon_extent + (lowest_lat_cut, highest_lat_cut), crs=ccrs.PlateCarree())
+    return ax
+
+def azimuthal_equidistant_projection_plot(
         data, central_latitude, central_longitude, extent, fpath):
+    
+    proj = ccrs.AzimuthalEquidistant(
+        central_longitude=central_longitude,
+        central_latitude=central_latitude
+    )
+
+    fig = plt.figure(figsize=(8, 8), dpi=150)
+    ax = plt.axes(projection=proj)
+    cnt = ax.contourf(
+        data.lon - 180., data.lat, data.values,
+        transform=ccrs.PlateCarree(), cmap="bwr", 
+        norm=CenteredNorm(vcenter=0), extend='both'
+    )
+    # Add map features
+    ax.set_extent(extent, crs=ccrs.PlateCarree()) # Set extent in lon/lat
+    ax.add_feature(cfeature.COASTLINE)
+    ax.add_feature(cfeature.STATES, linestyle=':')
+    ax.coastlines()
+    ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
+
+    plt.colorbar(cnt, orientation='vertical', pad=0.05, shrink=0.45)
+    plt.savefig(fpath, bbox_inches='tight')
+    plt.close(fig)
+
+def lambert_conformal_projection_plot(
+        data, central_latitude, central_longitude, extent, fpath, lat_cutoff=-30, info_vals: dict = None, cut_boundary=True):
     
 
         proj = ccrs.LambertConformal(
             central_longitude=central_longitude,
-            central_latitude=central_latitude
+            central_latitude=central_latitude,
+            cutoff=lat_cutoff
         )
 
         fig = plt.figure(figsize=(8, 8), dpi=150)
@@ -95,20 +132,29 @@ def lambert_conformal_projection_plot(
         )
         # Add map features
         # set boundary of ax to be of conic shape
-        lon_extent = [extent[0], extent[1]]
-        lat_extent = [extent[2], extent[3]]
-
-        ax.set_extent([*lon_extent, *lat_extent], crs=ccrs.PlateCarree()) # Set extent in lon/lat
-        ax = cut_axes_to_lambert_conformal_projection(
-            ax, central_longitude=central_longitude, central_latitude=central_latitude, 
-            lowest_lat_cut=lat_extent[0], highest_lat_cut=lat_extent[1] - 5, lon_extent=lon_extent
-        )
 
 
-        ax.add_feature(cfeature.COASTLINE)
-        ax.add_feature(cfeature.STATES, linestyle=':')
+        if extent is not None:
+            lon_extent = [extent[0], extent[1]]
+            lat_extent = [extent[2], extent[3]]
+            ax.set_extent([*lon_extent, *lat_extent], crs=ccrs.PlateCarree()) # Set extent in lon/lat
+
+            if cut_boundary:
+                ax = set_boundary_to_lambert_conformal_projection(
+                    ax, central_longitude=central_longitude, central_latitude=central_latitude, 
+                    lowest_lat_cut=lat_extent[0], highest_lat_cut=lat_extent[1], lon_extent=lon_extent
+                )
+
         ax.coastlines()
         ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
+
+        if info_vals is not None:
+            info_text = "\n".join([f"{key}: {value:.2f}" for key, value in info_vals.items()])
+            ax.text(
+                0.5, -0.1, info_text, transform=ax.transAxes,
+                fontsize=10, ha='center', va='top'
+            )
+
 
         plt.colorbar(cnt, orientation='vertical', pad=0.05, shrink=0.45)
         plt.savefig(fpath, bbox_inches='tight')

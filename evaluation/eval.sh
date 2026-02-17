@@ -1,11 +1,10 @@
 #!/bin/sh
-#SBATCH --job-name=eval-AW-avg-1x42-aimip-interpolgt
+#SBATCH --job-name=eval
 #SBATCH --account=bk1450
 #SBATCH --qos=normal
-#SBATCH --partition=gpu
-#SBATCH --time=12:00:00
+#SBATCH --partition=compute
+#SBATCH --time=08:00:00
 #SBATCH --nodes=1
-#SBATCH --gpus=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=10
 #SBATCH --output=logs/%x.%j.out

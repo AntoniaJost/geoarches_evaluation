@@ -103,9 +103,7 @@ class SpatialPlotter(EarthPlotter):
     def imshow(self, x: np.ndarray, variable_name, model_label, 
                output_path: str, title: str = "", cbar_label: str = ""):
         if x.min() < 0 and x.max()  > 0:
-            vmin = x.min()
-            vmax = x.max()
-            norm = CenteredNorm(vmin=vmin, vmax=vmax, vcenter=0)
+            norm = CenteredNorm(vcenter=0)
             colormap = self.cmap if self.cmap is not None else 'bwr'
         else:
             norm = None
@@ -117,8 +115,6 @@ class SpatialPlotter(EarthPlotter):
             title=title,
             cbar_label=f"{variable_name} {self.cmor_units.get(variable_name, '')}",
             cmap=colormap,
-            vmin=vmin if 'vmin' in locals() else None,
-            vmax=vmax if 'vmax' in locals() else None,
             norm=norm,
             fontdict=self.fontdict,
         )

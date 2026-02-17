@@ -1,5 +1,5 @@
-seasonal_means:
-  _target_: metrics.module.XYMaps
+SeasonalMeans:
+  _target_: metrics.module.XYBiasMaps
   xdim: "lon"
   ydim: "lat"
   temporal_selection: ["annual", "DJF", "MAM", "JJA", "SON"]
