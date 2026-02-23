@@ -13,6 +13,7 @@ class EarthPlotter:
             "axes.labelsize": 14,
             "ytick.labelsize": 12,
             "xtick.labelsize": 12,
+            "legend.fontsize": 10,
     }
     
     linestyles = ["-", "--", "-.", ":"]
@@ -100,15 +101,19 @@ class SpatialPlotter(EarthPlotter):
             **kwargs
         )
 
-    def imshow(self, x: np.ndarray, variable_name, model_label, 
+    def imshow(self, x: np.ndarray, variable_name, model_label, info: dict, 
                output_path: str, title: str = "", cbar_label: str = ""):
+        
         if x.min() < 0 and x.max()  > 0:
             norm = CenteredNorm(vcenter=0)
             colormap = self.cmap if self.cmap is not None else 'bwr'
         else:
             norm = None
-            colormap = self.cmap if self.cmap is not None else 'Blues'
+            colormap = self.cmap if self.cmap is not None else 'coolwarm'
+        
+        
 
+        infotext = ", ".join([f"{key}: {value}" for key, value in info.items()])
         spatial.imshow(
             x=x,
             output_path=os.path.join(output_path, f"{model_label}_{variable_name}.png"),
@@ -117,10 +122,12 @@ class SpatialPlotter(EarthPlotter):
             cmap=colormap,
             norm=norm,
             fontdict=self.fontdict,
+            infotext=infotext
         )
 
-    def plot(self, x: np.ndarray, model_label, 
-                title, variable_name, style="imshow", output_path=None
+    def plot(self, x: np.ndarray, model_label,
+             title, variable_name, info: dict = {}, style="imshow", 
+             output_path=None
             ):
         
 
@@ -134,7 +141,8 @@ class SpatialPlotter(EarthPlotter):
             variable_name=variable_name,
             model_label=model_label,
             title=title,
-            output_path=output_path
+            output_path=output_path,
+            info=info
         )
 
     
@@ -153,7 +161,7 @@ class TimeseriesPlotter(EarthPlotter):
 
     def plot(
             self, model_data: dict, linear_trend: dict = {}, model_stds: dict = {},  
-            fill=None, colors: dict = {}, linewidths: dict = {}, 
+            fill=None, colors: dict = {}, linewidths: dict = {}, linestyles: dict = {},
             markers: dict = {}, title: str = "", variable_name: str = "", 
             xlabel="", ylabel="", xticks: List = None, fname: str = ""
     ):  
@@ -162,6 +170,7 @@ class TimeseriesPlotter(EarthPlotter):
 
         for model_label, (time, data) in model_data.items():
             std = model_stds.get(model_label, None)
+            print(f"std for {model_label}: {std}")
             trend, m = linear_trend.get(model_label, (None, None))
             color = colors.get(model_label, 'blue')
             linewidth = linewidths.get(model_label, self.linewidth) 
@@ -193,13 +202,26 @@ class TimeseriesPlotter(EarthPlotter):
               ylabel,
               fontsize=self.fontdict['axes.labelsize']
         )
-        axs.set_xticks(
-            *self.get_xticks_from_timeseries(time), rotation=45,
-            fontsize=self.fontdict['xtick.labelsize']
-        )
+
+
+        if xticks is not None:
+            axs.set_xticks(
+                *xticks, rotation=45,
+                fontsize=self.fontdict['xtick.labelsize']
+            )
+        else:
+            axs.set_xticks(
+                *self.get_xticks_from_timeseries(time), rotation=45,
+                fontsize=self.fontdict['xtick.labelsize']
+            )
         
-        axs.legend(fontsize=self.fontdict['axes.labelsize'])
-        axs.grid(True, linewidth=0.25, linestyle='-', alpha=0.7)
+        # Create legend with smaller font size
+        # place legend above the plot
+        ncols = 2 if len(model_data) > 2 else 1
+        axs.legend(loc='upper center', bbox_to_anchor=(0.5, 1.2), 
+            ncol=ncols, fontsize=self.fontdict['legend.fontsize'])
+        
+        axs.grid(True, linewidth=0.25, linestyle='-.', alpha=0.7)
 
         plt.tight_layout()
         plt.savefig(f"{self.output_path}/{fname}", dpi=self.dpi)

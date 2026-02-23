@@ -6,6 +6,8 @@ import matplotlib.path as mpath
 
 from matplotlib import patches as mpatches
 from matplotlib.colors import CenteredNorm
+from matplotlib import path as mpath
+
 import cartopy.crs as ccrs
 
 from cartopy import feature as cfeature
@@ -13,6 +15,32 @@ from cartopy import feature as cfeature
 from geoarches.dataloaders.era5 import surface_variables_short, level_variables_short
 
 fontdict = {"font.size": 12}
+
+def define_wedge(wedge):
+    # Define a wedge shape for the colorbar ends
+    if wedge.lower() == "noa":
+        # -90 == 180 in the plot, 40 == 310 in the plot
+
+        wedge = mpatches.Wedge(
+            (0.5, 0.5), 0.5, 0, 360, fill=True, facecolor="k",
+            edgecolor="r", linewidth=1.0,
+            transform=ccrs.AzimuthalEquidistant(central_latitude=90, central_longitude=0)
+        )
+
+        return wedge
+    elif wedge.lower() == "europe":
+        wedge = mpatches.Wedge(
+            (0.5, 0.5), 0.5, 180, 360, fill=True, facecolor="k",
+            edgecolor=[0.2, 0.2, 0.2], linewidth=1.0,
+            transform=ccrs.PlateCarree()
+        )
+
+        return wedge
+
+    else:
+        raise ValueError(f"Wedge {wedge} not a valid value, choose between 'noa' and 'europe'")
+
+
 
 def set_boundary_to_lambert_conformal_projection(
     ax, central_longitude=-25, central_latitude=55, lowest_lat_cut=20, 
@@ -88,7 +116,7 @@ def set_boundary_to_azimuthal_equidistant_projection(
     return ax
 
 def azimuthal_equidistant_projection_plot(
-        data, central_latitude, central_longitude, extent, fpath):
+        data, central_latitude=0, central_longitude=0, extent=None, fpath=None, info_vals=None, wedge=None):
     
     proj = ccrs.AzimuthalEquidistant(
         central_longitude=central_longitude,
@@ -97,24 +125,46 @@ def azimuthal_equidistant_projection_plot(
 
     fig = plt.figure(figsize=(8, 8), dpi=150)
     ax = plt.axes(projection=proj)
+    if np.max(data.lon) < 360:
+        lon = np.linspace(0, 360, num=data.sizes['lon'])
+        data = data.assign_coords(lon=lon)
+
     cnt = ax.contourf(
         data.lon - 180., data.lat, data.values,
         transform=ccrs.PlateCarree(), cmap="bwr", 
         norm=CenteredNorm(vcenter=0), extend='both'
     )
     # Add map features
-    ax.set_extent(extent, crs=ccrs.PlateCarree()) # Set extent in lon/lat
+    if extent is not None:
+        ax.set_extent(extent, crs=ccrs.PlateCarree()) # Set extent in lon/lat
+        if wedge is not None:
+            print(f"Adding wedge for {wedge} to the plot")
+            wedge = define_wedge(wedge)
+            ax.add_patch(wedge)
+        r = (extent[-1] - extent[-2]) / 180 # Get radius of the circular boundary based on the latitude extent
+        r = 0.5
+        circ_x = 0.5 + r * np.cos(np.linspace(0, 2 * np.pi, 100))
+        circ_y = 0.5 + r * np.sin(np.linspace(0, 2 * np.pi, 100))
+        vertices = np.column_stack((circ_x, circ_y))
+        path = mpath.Path(vertices)
+        ax.set_boundary(path, transform=ax.transAxes)
+
+
     ax.add_feature(cfeature.COASTLINE)
     ax.add_feature(cfeature.STATES, linestyle=':')
     ax.coastlines()
     ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
-
+    if info_vals is not None:
+        ax.text(
+            0.5, -0.1, "\n".join([f"{key}: {value:.2f}" for key, value in info_vals.items()]), 
+            transform=ax.transAxes, fontsize=10, ha='center', va='top'
+        )
     plt.colorbar(cnt, orientation='vertical', pad=0.05, shrink=0.45)
     plt.savefig(fpath, bbox_inches='tight')
     plt.close(fig)
 
 def lambert_conformal_projection_plot(
-        data, central_latitude, central_longitude, extent, fpath, lat_cutoff=-30, info_vals: dict = None, cut_boundary=True):
+        data, central_latitude, central_longitude, extent, fpath, levels=None, lat_cutoff=-30, info_vals: dict = None, cut_boundary=True):
     
 
         proj = ccrs.LambertConformal(
@@ -128,7 +178,8 @@ def lambert_conformal_projection_plot(
         cnt = ax.contourf(
             data.lon - 180., data.lat, data.values,
             transform=ccrs.PlateCarree(), cmap="bwr", 
-            norm=CenteredNorm(vcenter=0), extend='both'
+            norm=CenteredNorm(vcenter=0), extend='both',
+            levels=levels
         )
         # Add map features
         # set boundary of ax to be of conic shape

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=era5
+#SBATCH --job-name=AWM11-aimip_default-unforced
 #SBATCH --time=08:00:00
 #SBATCH --partition=compute
 #SBATCH --account=bk1450
@@ -19,42 +19,44 @@ set -euo pipefail
 
 ### ----------------------------
 # IDEALLY, ALL YOU NEED TO TOUCH IS WITHIN THIS BLOCK. ADJUST ACCORDING TO YOUR DATA & STRUCTURE
-MODEL_TAG="era5_1x1_averaged" # part of folder path of input data
-NAME="era5" #"ArchesWeather", "ArchesWeatherGen"
-MEMBER="average" # typically 1 to 5
-ENSEMBLE="ERA5"
-SCENARIO="0k"
-TAG="${NAME}" # part of the input filename, without "day_"
-MODEL_FILE_NAME="${TAG}*" # part of the input filename, with "day_" at the beginning and without ".nc" at the end
-INPUT_DIR="/work/bk1450/b383170/era5/${MODEL_TAG}"
-TIMESPAN="1978-2025" # timespan of your input files
-TIMESPANS_DAILY=(
-  '["1978-10-01 ","2025-01-01"]'
-  # '["2013-01-01","2014-12-31"]'
-) # timespan(s) for which daily data is wanted. Has to be of format ["start date", "end date"]. if aimip=true timespan will be overwritten by aimip requirements
-AIMIP="false" # "true" or "false"
-RUN_DIR="/work/bk1450/b383170/era5/era5_1x1_averaged_cmor" # working directory where all output will be stores
-REPO_DIR="/work/bk1450/b383170/repositories/geoarches_evaluation/cmorisation" # directory of the repository (important: with "cmorisation" folder!)
-LOG_DIR="/work/bk1450/b383170/era5/era5_1x1_averaged_cmor/logs" # where you want your logs
-### ----------------------------
-
-# IDEALLY, ALL YOU NEED TO TOUCH IS WITHIN THIS BLOCK. ADJUST ACCORDING TO YOUR DATA & STRUCTURE
-#MODEL_TAG="ArchesWeather" # part of folder path of input data
-#NAME="ArchesWeather" #"ArchesWeather", "ArchesWeatherGen"
-#MEMBER="5" # typically 1 to 5
-#ENSEMBLE="r${MEMBER}i1p1f1"
-#SCENARIO="4k"
-#TAG="${NAME}_${ENSEMBLE}_gn" # part of the input filename, without "day_"
-#INPUT_DIR="/work/bk1450/b383170/eval/ArchesWeather/sst_${SCENARIO}/daily/member_${MEMBER}"
+#MODEL_TAG="era5_1x1_averaged" # part of folder path of input data
+#NAME="era5" #"ArchesWeather", "ArchesWeatherGen"
+#MEMBER="average" # typically 1 to 5
+#ENSEMBLE="ERA5"
+#SCENARIO="0k"
+#TAG="${NAME}" # part of the input filename, without "day_"
+#MODEL_FILE_NAME="${TAG}*" # part of the input filename, with "day_" at the beginning and without ".nc" at the end
+#INPUT_DIR="/work/bk1450/b383170/era5/${MODEL_TAG}"
 #TIMESPAN="1978-2025" # timespan of your input files
 #TIMESPANS_DAILY=(
 #  '["1978-10-01 ","2025-01-01"]'
 #  # '["2013-01-01","2014-12-31"]'
 #) # timespan(s) for which daily data is wanted. Has to be of format ["start date", "end date"]. if aimip=true timespan will be overwritten by aimip requirements
-#AIMIP="true" # "true" or "false"
-#RUN_DIR="/work/bk1450/b383170/rollouts/cmorised_aimip/ArchesWeather/${SCENARIO}/mem${MEMBER}" # working directory where all output will be stores
+#AIMIP="false" # "true" or "false"
+#RUN_DIR="/work/bk1450/b383170/era5/era5_1x1_averaged_cmor" # working directory where all output will be stores
 #REPO_DIR="/work/bk1450/b383170/repositories/geoarches_evaluation/cmorisation" # directory of the repository (important: with "cmorisation" folder!)
-#LOG_DIR="/work/bk1450/b383170/rollouts/cmorised_aimip/ArchesWeather/${SCENARIO}/mem${MEMBER}/logs" # where you want your logs
+#LOG_DIR="/work/bk1450/b383170/era5/era5_1x1_averaged_cmor/logs" # where you want your logs
+### ----------------------------
+
+# IDEALLY, ALL YOU NEED TO TOUCH IS WITHIN THIS BLOCK. ADJUST ACCORDING TO YOUR DATA & STRUCTURE
+MODEL_TAG="AWM11-aimip_default-unforced" # part of folder path of input data
+NAME="AWM11-aimip_default-unforced" #"ArchesWeather", "ArchesWeatherGen"
+MEMBER="4" # typically 1 to 5
+ENSEMBLE="r${MEMBER}i1p1f1"
+SCENARIO="0k"
+INIT_TIME="1978-10-01" # timespan of your input files
+TAG="${NAME}_${ENSEMBLE}_gn" # part of the input filename, without "day_"
+MODEL_FILE_NAME="day_${TAG}*" # part of the input filename, with "day_" at the beginning and without ".nc" at the end
+INPUT_DIR="/work/bk1450/b383170/rollouts/${MODEL_TAG}/sst_${SCENARIO}/${INIT_TIME}/member_${MEMBER}"
+TIMESPAN="1978-2025" # timespan of your input files
+TIMESPANS_DAILY=(
+  '["1978-10-01 ","2025-01-01"]'
+  # '["2013-01-01","2014-12-31"]'
+) # timespan(s) for which daily data is wanted. Has to be of format ["start date", "end date"]. if aimip=true timespan will be overwritten by aimip requirements
+AIMIP="False" # "true" or "false"
+RUN_DIR="/work/bk1450/b383170/rollouts/cmorised_aimip/${MODEL_TAG}/${SCENARIO}/${INIT_TIME}/mem${MEMBER}" # working directory where all output will be stores
+REPO_DIR="/work/bk1450/b383170/repositories/geoarches_evaluation/cmorisation" # directory of the repository (important: with "cmorisation" folder!)
+LOG_DIR="/work/bk1450/b383170/rollouts/cmorised_aimip/${MODEL_TAG}/${SCENARIO}/${INIT_TIME}/mem${MEMBER}/logs" # where you want your logs
 
 if [[ "${AIMIP,,}" == "true" ]]; then # spaces are important, don't change!!
 # DO NOT TOUCH THESE, they are the aimip requirements
@@ -105,7 +107,7 @@ for (( i=0; i<${#TIMESPANS_DAILY[@]}; i++ )); do # (https://www.gnu.org/software
   else
     echo "Skipping monmean: ${MONTHLY_MEAN_FILE} already exists."
   fi
+done
 
 python3 src/pipeline.py --config "${RUN_DIR}/config.yaml"
-
 echo "Done. Outputs under: ${RUN_DIR}"

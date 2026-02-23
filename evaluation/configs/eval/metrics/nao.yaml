@@ -1,6 +1,9 @@
 NorthernAtlanticOscillationIndex:
   _target_: metrics.module.NorthernAtlanticOscillationIndex
   method: "Hurrell"
+  frequency: "monthly"
+  latitude_bands: [20, 90]
+  longitude_bands: [90, 220]
   plotter_kwargs:
     output_path: "nao"
     

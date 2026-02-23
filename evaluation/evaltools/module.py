@@ -143,15 +143,23 @@ class CMORDataContainer:
         var = []
         for f in fpaths:
             var.append(xr.open_mfdataset(f, combine="by_coords"))
+
         if len(var) > 1:
             var = xr.concat(var, dim="member")
+
+            if var_name == "tos":
+                var[var_name] += 273.15  # Convert from Kelvin to Celsius
+            
             var_mean = var.mean("member")
             var_std = var.std("member")
+            
             # Combine into a single dataset with mean and std
             var = xr.concat([var_mean, var_std], dim="stat").assign_coords(stat=["mean", "std"])
 
         else:
             var = var[0]
+            if var_name == "tos":
+                var[var_name] += 273.15  # Convert from Kelvin to Celsius
 
         if self.period is not None:
             var = var.sel(
@@ -202,11 +210,6 @@ class CMORDataContainer:
         print("--> Finished loading daily data.")
         self.daily_data = data_vars
 
-    def yield_data(self, data_arr):
-        if "stat" in data_arr.coords and "mean" in data_arr.coords["stat"]:
-            return data_arr.sel(stat="mean", drop=True)
-        else:
-            return data_arr
 
     def get_variable_data(self, name, pressure_level=None, frequency="monthly"):
         """
@@ -221,18 +224,19 @@ class CMORDataContainer:
         if frequency == "monthly":
             assert hasattr(self, "monthly_data"), \
             "Monthly data not loaded. Please load monthly data first."
-            data = self.yield_data(self.monthly_data[name])
+            data = self.monthly_data[name]
         elif frequency == "daily":
             assert hasattr(self, "daily_data"), \
             "Daily data not loaded. Please load daily data first."
-            data = self.yield_data(self.daily_data[name])
+            data = self.daily_data[name]
         else:
             raise ValueError("Frequency must be either 'monthly' or 'daily'.")
         
         if pressure_level is not None:
             data = data.sel(plev=pressure_level)
 
-        return data
+        # return DataArray if dataset has only one variable
+        return data[name]
 
 
 # Class that calculates temporally averaged data from CMORized NetCDF files

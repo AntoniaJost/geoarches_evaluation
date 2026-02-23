@@ -1,0 +1,9 @@
+WebsterYangIndex:
+  _target_: metrics.module.MonsoonIndices
+  method: "webster_yang"
+  frequency: "monthly"
+  baseline_period: ["1981", "2014"]
+  target_year: 2024
+  plotter_kwargs:
+    output_path: "MonsoonIndex"
+    figsize: (10, 8)

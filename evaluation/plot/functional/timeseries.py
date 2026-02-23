@@ -49,11 +49,12 @@ def fill_timeseries(
     x,
     std=None,
     fill_type="full",
-    alpha=0.2
+    alpha=0.2,
+    color="gray"
 ):
     if fill_type == "full":
         assert std is not None, "Standard deviation must be provided for 'full' fill type."
-        ax.fill_between(range(len(x)), x - std, x + std, color="gray", alpha=alpha)
+        ax.fill_between(range(len(x)), x - std, x + std, color=color, alpha=alpha)
     elif fill_type == "sign":
         _fill_positive_negative(ax, x)
     else:
@@ -69,6 +70,7 @@ def timerseries_to_ax(
     linear_trend=None,
     std=None,
     linewidth=2.0,
+    linestyle="-",
     fill: None | str = None,
     label="",
     marker=None,
@@ -100,12 +102,21 @@ def timerseries_to_ax(
         alpha = 1.0
 
     if y is not None:
-        ax.plot(x, y, color=color, linewidth=linewidth, label=label, marker=marker, alpha=alpha)
-        fill_timeseries(ax, y, std, fill_type=fill, alpha=fill_alpha)
+        ax.plot(
+            x, y, color=color, linewidth=linewidth, 
+            label=label, marker=marker, linestyle=linestyle, alpha=alpha)
+        if std is not None and fill is None:
+            fill = "full"
+        fill_timeseries(ax, y, std, fill_type=fill, alpha=fill_alpha, color=color)
 
     else:
-        ax.plot(x, color="black", linewidth=linewidth, label=label, marker=marker, alpha=alpha)
-        fill_timeseries(ax, x, std, fill_type=fill, alpha=fill_alpha)
+        ax.plot(
+            x, color="black", linewidth=linewidth, 
+            label=label, marker=marker, linestyle=linestyle, alpha=alpha)
+        if std is not None and fill is None:
+            fill = "full"
+            
+        fill_timeseries(ax, x, std, fill_type=fill, alpha=fill_alpha, color=color)
 
     if linear_trend is not None:
         if y is not None:
@@ -169,7 +180,6 @@ def plot_annual_oscillation(
     # time is a list of tuples, each tuple containing (year, month)
     # Create xticklabels of form 'YYYY-MM'
     xticklabels = [f"{y}-{m:02d}" for (y, m) in time]
-    print(xticklabels)
     indices = list(range(len(xticklabels)))
 
     mult = get_xlabel_multiplier(len(indices))

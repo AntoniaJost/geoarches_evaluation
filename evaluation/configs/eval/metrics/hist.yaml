@@ -1,0 +1,13 @@
+Histogram: 
+  _target_: metrics.module.Histogram
+  time: ["2014-01-01", "2024-12-31"]
+  variables: 
+    - ["uas", null]
+    - ["vas", null]
+    - ["tas", null]
+    - ["ua", 85000]
+    - ["va", 85000]
+    - ["ta", 85000]
+    - ["hus", 85000]
+  plotter_kwargs:
+    output_path: "histogram"

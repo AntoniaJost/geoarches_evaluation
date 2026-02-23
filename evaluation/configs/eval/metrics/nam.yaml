@@ -1,6 +1,9 @@
 NorthernAnnularMode:
   _target_: metrics.module.NorthernAnnularMode
+  var: "psl"
   method: "EOF"
   frequency: "monthly"
+  latitude_bands: [20, 90]
+  longitude_bands: Null
   plotter_kwargs:
     output_path: "NAM"
