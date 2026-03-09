@@ -1,7 +1,10 @@
 defaults:
   - _self_
-  - metrics/bias_maps.yaml
+  #- metrics/spectrum.yaml
+  #- metrics/tropical_cyclones.yaml
   - metrics/hist.yaml
+  #- metrics/bias_maps.yaml
+  #- metrics/seasonal_means.yaml
   #- metrics/lat_time.yaml
   #- metrics/webster_yang.yaml
   #- metrics/seasonal_means.yaml

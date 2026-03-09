@@ -1,6 +1,7 @@
 Histogram: 
   _target_: metrics.module.Histogram
-  time: ["2014-01-01", "2024-12-31"]
+  time: ["1978-10-01", "1978-10-03"]
+  frequency: "daily"
   variables: 
     - ["uas", null]
     - ["vas", null]

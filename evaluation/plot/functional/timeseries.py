@@ -23,8 +23,10 @@ def get_xlabel_multiplier(n_xticks):
         return 6
     elif n_xticks <= 240:
         return 12
+    elif n_xticks <= 360:
+        return 30
     elif n_xticks <= 1200:
-        return 24
+        return 48
 
 
 def _fill_positive_negative(ax, data):

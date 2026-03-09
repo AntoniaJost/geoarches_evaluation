@@ -1,6 +1,6 @@
 NorthernAnnularMode:
   _target_: metrics.module.NorthernAnnularMode
-  var: "psl"
+  var: "zg"
   method: "EOF"
   frequency: "monthly"
   latitude_bands: [20, 90]

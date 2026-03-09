@@ -5,6 +5,6 @@ defaults:
   - eval: metrics
 
 
-output_path: "./evalstore/results/arches_gen_against_era5"
+output_path: "./evalstore/results/test_refactor"
 latitude: 181
 

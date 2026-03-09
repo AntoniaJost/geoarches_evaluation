@@ -3,6 +3,7 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 import matplotlib.path as mpath
+import matplotlib.ticker as mticker
 
 from matplotlib import patches as mpatches
 from matplotlib.colors import CenteredNorm
@@ -22,16 +23,16 @@ def define_wedge(wedge):
         # -90 == 180 in the plot, 40 == 310 in the plot
 
         wedge = mpatches.Wedge(
-            (0.5, 0.5), 0.5, 0, 360, fill=True, facecolor="k",
-            edgecolor="r", linewidth=1.0,
-            transform=ccrs.AzimuthalEquidistant(central_latitude=90, central_longitude=0)
+            (0.5, 0.5), 0.5, 180, 310, fill=False, facecolor="k",
+            edgecolor="k", linewidth=1.0,
+            transform=ccrs.PlateCarree()
         )
 
         return wedge
     elif wedge.lower() == "europe":
         wedge = mpatches.Wedge(
-            (0.5, 0.5), 0.5, 180, 360, fill=True, facecolor="k",
-            edgecolor=[0.2, 0.2, 0.2], linewidth=1.0,
+            (0.5, 0.5), 0.5, 180, 360, fill=False, facecolor="k",
+            edgecolor="k", linewidth=1.0,
             transform=ccrs.PlateCarree()
         )
 
@@ -118,13 +119,20 @@ def set_boundary_to_azimuthal_equidistant_projection(
 def azimuthal_equidistant_projection_plot(
         data, central_latitude=0, central_longitude=0, extent=None, fpath=None, info_vals=None, wedge=None):
     
+
     proj = ccrs.AzimuthalEquidistant(
         central_longitude=central_longitude,
         central_latitude=central_latitude
     )
 
     fig = plt.figure(figsize=(8, 8), dpi=150)
+
     ax = plt.axes(projection=proj)
+    if wedge is not None:
+        print(f"Adding wedge for {wedge} to the plot")
+        wedge = define_wedge(wedge)
+        ax.add_patch(wedge)
+
     if np.max(data.lon) < 360:
         lon = np.linspace(0, 360, num=data.sizes['lon'])
         data = data.assign_coords(lon=lon)
@@ -134,13 +142,18 @@ def azimuthal_equidistant_projection_plot(
         transform=ccrs.PlateCarree(), cmap="bwr", 
         norm=CenteredNorm(vcenter=0), extend='both'
     )
+
+    # add contour lines, get levels from the contourf object to ensure they are the same as the filled contours
+    levels = cnt.levels
+    ax.contour(
+        data.lon - 180., data.lat, data.values,
+        transform=ccrs.PlateCarree(), colors='k', linewidths=0.5, levels=levels
+    )
+
     # Add map features
     if extent is not None:
         ax.set_extent(extent, crs=ccrs.PlateCarree()) # Set extent in lon/lat
-        if wedge is not None:
-            print(f"Adding wedge for {wedge} to the plot")
-            wedge = define_wedge(wedge)
-            ax.add_patch(wedge)
+
         r = (extent[-1] - extent[-2]) / 180 # Get radius of the circular boundary based on the latitude extent
         r = 0.5
         circ_x = 0.5 + r * np.cos(np.linspace(0, 2 * np.pi, 100))
@@ -156,8 +169,9 @@ def azimuthal_equidistant_projection_plot(
     ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
     if info_vals is not None:
         ax.text(
-            0.5, -0.1, "\n".join([f"{key}: {value:.2f}" for key, value in info_vals.items()]), 
-            transform=ax.transAxes, fontsize=10, ha='center', va='top'
+            1.01, 1.01, "\n".join([f"{key}: {value:.2f}" for key, value in info_vals.items()]),
+            transform=ax.transAxes, fontsize=10, ha='right', va='top',
+            bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7),
         )
     plt.colorbar(cnt, orientation='vertical', pad=0.05, shrink=0.45)
     plt.savefig(fpath, bbox_inches='tight')
@@ -180,6 +194,13 @@ def lambert_conformal_projection_plot(
             transform=ccrs.PlateCarree(), cmap="bwr", 
             norm=CenteredNorm(vcenter=0), extend='both',
             levels=levels
+        )
+
+        # add contour lines
+        levels = cnt.levels if levels is None else levels
+        ax.contour(
+            data.lon - 180., data.lat, data.values,
+            transform=ccrs.PlateCarree(), colors='k', linewidths=0.5, levels=levels
         )
         # Add map features
         # set boundary of ax to be of conic shape
@@ -251,15 +272,18 @@ def imshow(
     ax.set_global()
     ax.coastlines()
     ax.add_feature(cfeature.BORDERS, linestyle=":")
-    gl = ax.gridlines(draw_labels=True, dms=True, x_inline=False, y_inline=False, linewidth=0.5, alpha=0.9)
-    gl.xlabels_top = False
-    gl.ylabels_left = False
+    ax.gridlines(draw_labels=False, dms=True, x_inline=False, y_inline=False, linewidth=0.5, alpha=0.9)
+
 
     ax.set_title(title)
 
     if x.shape[0] == 1:
         x = np.squeeze(x, axis=0)
 
+    if vmin and vmax is not None and norm is not None:
+        # Reset norm 
+        norm = None
+        
     img = ax.imshow(
         x,
         transform=ccrs.PlateCarree(central_longitude=central_longitude),
@@ -271,11 +295,11 @@ def imshow(
 
     ax.text(
         0.5,
-        1.1,
+        1.02,
         infotext,
         fontsize=10,
         ha="center",
-        va="center",
+        va="bottom",
         transform=ax.transAxes,
     )
 
@@ -294,14 +318,21 @@ def imshow(
         img,
         ax=ax,
         orientation="horizontal",
-        pad=0.1,
+        pad=0.05,
         extend="both",
-        shrink=0.6,
+        shrink=0.5,
         aspect=30,
         norm=norm,
     )
 
-    cbar.set_label(cbar_label if cbar_label else "")
+    cbar.set_label(cbar_label if cbar_label else "", fontsize=10)
+
+    # Use scientific notation for very small or very large tick values.
+    formatter = mticker.ScalarFormatter(useMathText=True)
+    formatter.set_powerlimits((-2, 3))
+    cbar.ax.xaxis.set_major_formatter(formatter)
+    cbar.ax.yaxis.set_major_formatter(formatter)
+
     plt.tight_layout()
 
     if output_path:
@@ -348,14 +379,21 @@ def contourf(x, y, z, output_path, add_contourlines=False, **kwargs):
     cbar = fig.colorbar(
         cnt,
         ax=ax,
-        orientation="horizontal",
+        orientation="vertical",
         pad=0.1,
-        shrink=0.8,
+        shrink=0.5,
         aspect=30,
         norm=kwargs.get("norm", None),
     )
 
-    cbar.set_label(kwargs.get("cbar_label", ""))
+    cbar.set_label(kwargs.get("cbar_label", ""), fontsize=10)
+
+    # Use scientific notation for very small or very large tick values.
+    formatter = mticker.ScalarFormatter(useMathText=True)
+    formatter.set_powerlimits((-2, 3))
+    cbar.ax.xaxis.set_major_formatter(formatter)
+    cbar.ax.yaxis.set_major_formatter(formatter)
+
     plt.tight_layout()
 
     if output_path:

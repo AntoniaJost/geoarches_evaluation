@@ -1,13 +1,25 @@
-from cProfile import label
-from typing import List
 from omegaconf import OmegaConf
 import xarray as xr
 from glob import glob
 from hydra.utils import instantiate
 import numpy as np
-from metrics import module as metric_modules
 
-from plot.modules import SpatialPlotter
+# ---------------------------------------------------------------------------
+# Dask chunk sizes per temporal frequency.
+# Chunks are chosen so each chunk fits comfortably in memory and enables
+# parallel I/O across files.  Spatial dimensions are left unchunked because
+# all metrics operate on the full lat/lon grid at once.
+# ---------------------------------------------------------------------------
+_CHUNK_SIZES = {
+    "monthly": {"time": 120},   # ~10 years of monthly data
+    "daily":   {"time": 365},   # ~1 year of daily data
+}
+
+
+def _normalize_path(path):
+    """Return *path* as a list when it is not already a string."""
+    return path if isinstance(path, str) else list(path)
+
 
 class GeoClimate:
     def __init__(self, data, metric_cfgs, output_path="."):
@@ -82,7 +94,7 @@ class CMORDataContainer:
     def __init__(
             self, model_label, grid_type='gn', path_to_monthly_data=None, path_to_daily_data=None, 
             variable_names=None, is_reference: bool = False, roll_longitude: bool = True, color='k',
-            period=None
+            period=None, nlat=181, nlon=360
         ):
         """
         This container loads cmorized data and provides functionality 
@@ -100,233 +112,220 @@ class CMORDataContainer:
         self.period = period
         self.grid_type = grid_type
         self.roll_longitude = roll_longitude
-        if path_to_daily_data is not None:
-            if not isinstance(path_to_daily_data, str) and path_to_daily_data is not None:
-                self.path_to_daily_data = list(path_to_daily_data)
-            else:
-                self.path_to_daily_data = path_to_daily_data
+        self.nlat = nlat
+        self.nlon = nlon
 
-            self.load_daily_data()
+        # Per-variable lazy caches: populated on first access in get_variable_data.
+        # Use None sentinel so missing variables can be distinguished from unloaded ones.
+        self._monthly_cache = {}
+        self._daily_cache = {}
+
+        # Store paths only – data is loaded on demand (see get_variable_data).
+        self.path_to_daily_data = None
+        self.path_to_monthly_data = None
+
+        if path_to_daily_data is not None:
+            self.path_to_daily_data = _normalize_path(path_to_daily_data)
 
         if path_to_monthly_data is not None:
-            if not isinstance(path_to_monthly_data, str) and path_to_monthly_data is not None:
-                self.path_to_monthly_data = list(path_to_monthly_data)
-            else:
-                self.path_to_monthly_data = path_to_monthly_data
-            self.load_monthly_data()
+            self.path_to_monthly_data = _normalize_path(path_to_monthly_data)
 
         if variable_names is not None:
             self.variable_names = variable_names
 
         self.is_reference = is_reference
-
         self.model_label = model_label
         self.model_color = color
 
         print("Initialized CmorDataContainer for ", self.model_label)
         print("#" * 72)
 
-    def load_data(self, path, var_name):
+    def load_data(self, path, var_name, frequency="monthly"):
+        """
+        Open NetCDF files for *var_name* as a dask-backed lazy dataset.
+
+        Each file under *path*/{var_name}/**/*.nc is treated as one ensemble
+        member.  When multiple members exist, the dataset is concatenated along
+        a new ``stat`` dimension containing the member mean and std.
+
+        The returned dataset is **lazy** (dask-backed): no data is read from
+        disk until an explicit ``.compute()`` or ``.values`` access occurs.
+        """
+
+        fpaths = []
         if isinstance(path, list):
-            fpaths = []
             for p in path:
-                fpaths += glob(p + f"/{var_name}/" + "/**/*.nc", recursive=True)
+                # Appending as each path is globbed allows for multiple ensemble members across different paths.
+                fpaths.append(glob(p + f"/{var_name}/" + "/**/*.nc", recursive=True))
         else:
-            fpaths = glob(path + f"/{var_name}/" + "/**/*.nc", recursive=True)
-            
-        fpaths.sort()
-        if fpaths == []:
+            fpaths.append(glob(path + f"/{var_name}/" + "/**/*.nc", recursive=True))
+
+  
+        if not fpaths:
             print(f"!!! No files found for variable {var_name} in path {path}/{var_name}/")
             return None
-        
-        print(f"... {var_name} from:", fpaths, " ...", end=" ")
-        var = []
-        for f in fpaths:
-            var.append(xr.open_mfdataset(f, combine="by_coords"))
 
-        if len(var) > 1:
-            var = xr.concat(var, dim="member")
+        chunks = _CHUNK_SIZES.get(frequency, {"time": 120})
+        print(f"... {var_name}: {len(fpaths)} file(s), chunks={chunks} ...", end=" ")
 
+        # Open each file lazily with dask chunks.
+        # Each file is one ensemble member; open_mfdataset handles multi-file
+        # members internally via combine="by_coords".
+        member_datasets = [
+            xr.open_mfdataset(f, combine="by_coords", chunks=chunks)
+            for f in fpaths
+        ]
+
+        if len(member_datasets) > 1:
+            # Concatenate members lazily, then compute mean + std along that dim.
+            var = xr.concat(member_datasets, dim="member")
             if var_name == "tos":
-                var[var_name] += 273.15  # Convert from Kelvin to Celsius
-            
+                var[var_name] = var[var_name] + 273.15
+            # These reductions stay lazy (dask graph nodes).
             var_mean = var.mean("member")
-            var_std = var.std("member")
-            
-            # Combine into a single dataset with mean and std
-            var = xr.concat([var_mean, var_std], dim="stat").assign_coords(stat=["mean", "std"])
-
-        else:
-            var = var[0]
-            if var_name == "tos":
-                var[var_name] += 273.15  # Convert from Kelvin to Celsius
-
-        if self.period is not None:
-            var = var.sel(
-                time=slice(self.period[0], self.period[1])
+            var_std  = var.std("member")
+            var = xr.concat([var_mean, var_std], dim="stat").assign_coords(
+                stat=["mean", "std"]
             )
+        else:
+            var = member_datasets[0]
+            if var_name == "tos":
+                var[var_name] = var[var_name] + 273.15
+
+        # Period selection and longitude roll are both lazy operations.
+        if self.period is not None:
+            var = var.sel(time=slice(self.period[0], self.period[1]))
+
+            #if "MPI-ESM" in self.model_label:
+            #    print(var[var_name].values)
         if self.roll_longitude:
-            var = var.roll(
-                lon=-len(var.lon) // 2, roll_coords=False
-            )  # Roll longitude to match data
-        print("Done")
+            var = var.roll(lon=-len(var.lon) // 2, roll_coords=False)
+
+        if var.lat[0] < var.lat[-1]:
+            # If latitudes are in ascending order, flip to descending (common in CMIP data).
+            var = var.reindex(lat=var.lat[::-1])
+
+        # Make sure that the variable is interpolated to the expected grid (if not already).
+        # I.e. interpolate lat and lon to self.nlat x self.nlon grid.  
+        # This ensures that all variables are on the same grid, which is important for some metrics.
+        # This is a no-op if the data is already on the target grid.
+        var = self._interpolate_to_target_grid(var) 
+
+        print("Done (lazy)")
         return var
 
+    def _interpolate_to_target_grid(self, ds):
+        """
+        Interpolate *ds* so that its ``lat`` and ``lon`` dimensions have exactly
+        ``self.nlat`` and ``self.nlon`` points respectively.
+
+        If the dataset already has the correct number of points on both axes the
+        dataset is returned unchanged (no-op).  Otherwise linear interpolation
+        is applied via :func:`xarray.Dataset.interp`.
+
+        Parameters
+        ----------
+        ds : xr.Dataset
+            Input dataset with ``lat`` and ``lon`` coordinate dimensions.
+
+        Returns
+        -------
+        xr.Dataset
+            Dataset on the target grid.
+        """
+        current_nlat = ds.sizes.get("lat", None)
+        current_nlon = ds.sizes.get("lon", None)
+
+        if current_nlat == self.nlat and current_nlon == self.nlon:
+            return ds  # already on target grid – nothing to do
+
+        # Build target coordinate arrays that span the same range as the
+        # source coordinates so we do not extrapolate.
+        target_lat = np.linspace(float(ds.lat[0]), float(ds.lat[-1]), self.nlat)
+        target_lon = np.linspace(float(ds.lon[0]), float(ds.lon[-1]), self.nlon)
+
+        ds = ds.interp(lat=target_lat, lon=target_lon, method="linear")
+        return ds
+
+    def _load_single_variable(self, path, var_name, frequency):
+        """Load *var_name* lazily and store in the appropriate cache."""
+        ds = self.load_data(path, var_name, frequency=frequency)
+        return ds
+
+    def preload_all(self, frequency="monthly"):
+        """
+        Eagerly preload all known variables for *frequency*.
+
+        This is equivalent to the behaviour of the old ``load_monthly_data`` /
+        ``load_daily_data`` methods.  Calling it is optional; variables are
+        also loaded automatically on the first ``get_variable_data`` call.
+        """
+        path = self.path_to_monthly_data if frequency == "monthly" else self.path_to_daily_data
+        assert path is not None, f"No {frequency} data path configured."
+        print(f"--> Pre-loading all {frequency} variables from: {path}")
+        for var_short in self.variable_names:
+            self.get_variable_data(var_short, frequency=frequency)
+        print(f"--> Finished pre-loading {frequency} data.")
+
+    # Keep old method names for backward compatibility.
     def load_monthly_data(self):
-        """
-            Loads monthly data.
-        """
-        assert self.path_to_monthly_data is not None, \
-        "path_to_monthly_data must be provided to load monthly data."
-
-        print("--> Loading monthly data from:", self.path_to_monthly_data)
-
-        # Data is given per variable
-        data_vars = {}
-        for var_short, _ in self.variable_names.items():
-            data_vars[var_short] = self.load_data(self.path_to_monthly_data, var_short)
-
-        print("--> Finished loading monthly data.")
-        
-        
-        self.monthly_data = data_vars
+        """Pre-load all monthly variables (optional - variables load lazily by default)."""
+        self.preload_all("monthly")
 
     def load_daily_data(self):
-        """
-            Loads daily data.
-        """
-
-        assert self.path_to_daily_data is not None, \
-        "path_to_daily_data must be provided to load daily data."
-
-        print("--> Loading daily data from:", self.path_to_daily_data)
-
-        # Data is given per variable
-        data_vars = {}
-        for var_short, _ in self.variable_names.items():
-
-            data_vars[var_short] = self.load_data(self.path_to_daily_data, var_short)
-  
-        print("--> Finished loading daily data.")
-        self.daily_data = data_vars
+        """Pre-load all daily variables (optional - variables load lazily by default)."""
+        self.preload_all("daily")
 
 
     def get_variable_data(self, name, pressure_level=None, frequency="monthly"):
         """
-        Yields data for the specified variable name and frequency.
-        Parameters:
-        name (str): Name of the variable to retrieve.
-        frequency (str): Frequency of the data ("monthly" or "daily").
-        Returns:
-        xarray.DataArray: Data for the specified variable.
+        Return a (dask-backed, lazy) DataArray for *name* at the given frequency.
+
+        The variable is loaded from disk on the **first** call and cached for
+        subsequent calls.  No data is computed until an explicit ``.values`` or
+        ``.compute()`` is triggered by a metric.
+
+        Parameters
+        ----------
+        name : str
+            CMOR short name of the variable (e.g. ``"tas"``, ``"ua"``).
+        pressure_level : int or None
+            If given, select this pressure level from the ``plev`` dimension.
+        frequency : str
+            ``"monthly"`` or ``"daily"``.
+
+        Returns
+        -------
+        xr.DataArray
         """
-
         if frequency == "monthly":
-            assert hasattr(self, "monthly_data"), \
-            "Monthly data not loaded. Please load monthly data first."
-            data = self.monthly_data[name]
+            cache = self._monthly_cache
+            path  = self.path_to_monthly_data
         elif frequency == "daily":
-            assert hasattr(self, "daily_data"), \
-            "Daily data not loaded. Please load daily data first."
-            data = self.daily_data[name]
+            cache = self._daily_cache
+            path  = self.path_to_daily_data
         else:
-            raise ValueError("Frequency must be either 'monthly' or 'daily'.")
-        
-        if pressure_level is not None:
-            data = data.sel(plev=pressure_level)
+            raise ValueError("frequency must be 'monthly' or 'daily'.")
 
-        # return DataArray if dataset has only one variable
+        if path is None:
+            raise ValueError(
+                f"No {frequency} data path configured for {self.model_label}."
+            )
+
+        # Load and cache lazily on first access.
+        if name not in cache:
+            cache[name] = self._load_single_variable(path, name, frequency)
+
+        data = cache[name]
+        if data is None:
+            raise KeyError(
+                f"Variable '{name}' not found under {frequency} path for "
+                f"{self.model_label}."
+            )
+
+        if pressure_level is not None:
+            data = data.sel(plev=pressure_level, method="nearest")
+
         return data[name]
 
 
-# Class that calculates temporally averaged data from CMORized NetCDF files
-# Further the data is averaged over spatial dimensions that are not specified 
-# as plotting dimensions
-
-
-class DataContainer:
-    """
-    Class to load and hold climate data from NetCDF files
-    """
-
-    def __init__(
-        self,
-        path_list,
-        label,
-        data_color=np.zeros(
-            3,
-        )
-        + np.random.rand(
-            3,
-        ),
-        filename_filters=None,
-        dimension_indexers=None,
-        time_range=None,
-        assign_coords: dict =None,
-        is_reference: bool = False,
-    ):
-        """
-        Initializes the DataContainer with the given parameters.
-        Parameters:
-        path (str): Path to the directory containing NetCDF files.
-        label (str): Label for the dataset.
-        filename_filters (list): List of strings to filter filenames.
-        data_color (str): Color associated with the dataset for e.g. line plots.
-        dimension_indexers (dict, optional): Dictionary to rename dimensions in the dataset.
-        """
-
-        self.path_list = list(path_list)
-        self.label = label
-        self.filename_filters = filename_filters
-        self.data_color = data_color
-        self.dimension_indexers = dimension_indexers
-        self.time_range = time_range
-        self.assign_coords = assign_coords
-        self.is_reference = is_reference
-
-    def _load_data_from_path(self, path):
-        fpaths = glob(path + "/*.nc")
-        fpaths.sort()
-        if self.filename_filters is not None:
-            fpaths = [f for f in fpaths if any(nf in f for nf in self.filename_filters)]
-
-        print("Opening data from:", path, " ...", end=" ")
-        data = xr.open_mfdataset(fpaths, combine="by_coords")
-        print("Done")
-
-        if data.latitude[0] < data.latitude[-1]:  # if latitude is descending
-            data["latitude"] = data.latitude[::-1]
-
-        data = data.roll(
-            longitude=-len(data.longitude) // 2, roll_coords=False
-        )  # Roll longitude to match data
-
-        if self.dimension_indexers is not None:
-            print(data)
-            data = data.rename(**self.dimension_indexers)
-            print(data)
-
-        if self.assign_coords is not None:
-            for key, value in self.assign_coords.items():
-                print(f"Assigning coords {key}: {value}")
-                data[key] = value
-
-        if self.time_range is not None:
-            data = data.sel(
-                time=slice(self.time_range["start"], self.time_range["end"])
-            )
-
-        return data
-    
-    def _load_data_from_paths(self):
-        datasets = [self._load_data_from_path(p) for p in self.path_list]
-
-        if len(datasets) == 1:
-            self.data = datasets[0]
-            return
-        else:
-            print("Calculating member mean from multiple paths...")
-            self.data = xr.concat(datasets, dim="member").mean("member")
-            print("Calculating member std from multiple paths...")
-            self.std = xr.concat(datasets, dim="member").std("member")
-            return
