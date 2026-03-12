@@ -2,13 +2,13 @@ defaults:
   - _self_
   #- metrics/spectrum.yaml
   #- metrics/tropical_cyclones.yaml
-  - metrics/hist.yaml
+  #- metrics/hist.yaml
   #- metrics/bias_maps.yaml
   #- metrics/seasonal_means.yaml
   #- metrics/lat_time.yaml
   #- metrics/webster_yang.yaml
   #- metrics/seasonal_means.yaml
   #- metrics/annual_cycle.yaml
-  #- metrics/nam.yaml
+  - metrics/nam.yaml
   #- metrics/nao.yaml
   #- metrics/soi.yaml

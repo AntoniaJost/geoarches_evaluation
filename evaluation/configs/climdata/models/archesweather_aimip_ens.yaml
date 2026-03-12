@@ -1,0 +1,17 @@
+ArchesWeather-Ensemble":
+  path_to_daily_data: 
+    - "rollouts/cmorised_aimip/ArchesWeather/full/0k/r1i1p1f1/day"
+    - "rollouts/cmorised_aimip/ArchesWeather/full/0k/r2i1p1f1/day"
+    #- "rollouts/cmorised_aimip/ArchesWeather/full/0k/r3i1p1f1/day"
+    - "rollouts/cmorised_aimip/ArchesWeather/full/0k/r4i1p1f1/day"
+    - "rollouts/cmorised_aimip/ArchesWeather/full/0k/r5i1p1f1/day"
+  path_to_monthly_data: 
+    - "rollouts/cmorised_aimip/ArchesWeather/full/0k/r1i1p1f1/Amon"
+    - "rollouts/cmorised_aimip/ArchesWeather/full/0k/r2i1p1f1/Amon"
+    #- "rollouts/cmorised_aimip/ArchesWeather/full/0k/r3i1p1f1/Amon"
+    - "rollouts/cmorised_aimip/ArchesWeather/full/0k/r4i1p1f1/Amon"
+    - "rollouts/cmorised_aimip/ArchesWeather/full/0k/r5i1p1f1/Amon"
+  model_label: "AW-M Ensemble (SST=0k)"
+  color: [0.0, 0.0, 0.8]  # some blue color
+  period: ["1978-10-01", "2014-12-31"]
+  is_reference: False

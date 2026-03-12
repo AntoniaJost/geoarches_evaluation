@@ -137,10 +137,12 @@ def compute_eof(data: xr.DataArray, n_modes: int = 1):
     """
     data = data.transpose("time", "lat", "lon", ...)
     x = data.values.reshape(data.values.shape[0], -1)  # (T, N)
-    print(x.shape)
     # scipy.sparse.linalg.svds returns singular values in *ascending* order
     # and requires k < min(T, N).
-    k = min(n_modes, min(x.shape) - 1)
+    if n_modes is None: 
+        k = n_modes = min(x.shape) - 1
+    else:
+        k = min(n_modes, min(x.shape) - 1)
     if k >= 1:
         U_k, S_k, Vt_k = _truncated_svds(x, k=k)
         # Reverse to descending order (matching np.linalg.svd convention).
@@ -155,7 +157,6 @@ def compute_eof(data: xr.DataArray, n_modes: int = 1):
         Vt_k = Vt_k[:n_modes, :]
 
     eof_modes = U_k[:, :n_modes].copy()
-    print(U_k.shape)
     for i in range(n_modes):
         mode = eof_modes[:, i]
         if np.corrcoef(x[:, 0], mode)[0, 1] > 0:

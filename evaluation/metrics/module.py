@@ -682,27 +682,36 @@ class EOF:
     ) -> None:
         assert isinstance(data, xr.DataArray), "data must be an xr.DataArray."
         self._data = data
-        self._anomaly = compute_anomaly(
-            data=self._data,
+
+        # time values set in format (yyyy-mm)
+        self.time = self._data.time.values.astype("datetime64[M]").astype(str)
+
+        self._data = compute_anomaly(
+            self._data,
             baseline_period=None,
-            mean_groups=["time.year"],
-            baseline_mean_groups=None,
-            standardize=True,
-        ).rename({"year": "time"}).reset_index("time", drop=True)
-        self._anomaly = self._anomaly.transpose("time", "lat", "lon")
-        self._anomaly.values = self._anomaly.values * compute_latitude_weights(
+            mean_groups=["time.year", "time.month"],
+            baseline_mean_groups=["time.month"],
+        ).stack({"time": ["year", "month"]}).reset_index("time", drop=True)
+
+        self._data = self._data.transpose("time", "lat", "lon").dropna(dim="time", how="any")
+        
+        self._data.values = self._data.values * compute_latitude_weights(
             self._data.lat.values, self._data.lon.values
         )
-        self._anomaly = self._anomaly.sel(lat=lat_slicer, lon=lon_slicer)
 
-        self.time = self._data.time.values
-        eof_modes, A, Lh, E = compute_eof(self._anomaly, n_modes=self.n_modes)
+
+        eof_modes, A, Lh, E = compute_eof(
+            self._data.sel(lat=lat_slicer, lon=lon_slicer), 
+            n_modes=None
+        )
+        print(Lh.shape)
+        print(Lh)
         self.eof_modes = eof_modes
         self.norm_coeff = Lh * Lh / (self.eof_modes.shape[0] - 1)
         # Fraction of total variance explained by the leading mode.
-        x_flat = self._anomaly.values.reshape(self._anomaly.values.shape[0], -1)
-        total_var = Lh[0].sum() 
-        self.explained_variance_ratio = (Lh[0] / total_var) if total_var > 0 else 0.0
+        total_var = Lh.sum() 
+        self.explained_variance_ratio = Lh[0] / total_var if total_var > 0 else 0.0
+        print(f"Explained variance ratio of leading mode: {self.explained_variance_ratio:.4f}")
 
 
     def eigenvals_timeseries(self) -> np.ndarray:
@@ -710,7 +719,6 @@ class EOF:
 
     def project_eofs(
         self,
-        anomaly: xr.DataArray,
         eof_modes: np.ndarray,
         lat_slicer=None,
         lon_slicer=None,
@@ -735,23 +743,25 @@ class EOF:
             Shape ``(lat, lon)`` matching *anomaly*. Values are NaN
             outside the requested band and 0 where not significant inside.
         """
-        full_lat = anomaly.lat.values
-        full_lon = anomaly.lon.values
+        full_lat = self._data.lat.values
+        full_lon = self._data.lon.values
 
         # Restrict to the desired band for projection and p-value stats.
-        _lat_slicer = lat_slicer if lat_slicer is not None else slice(None)
-        _lon_slicer = lon_slicer if lon_slicer is not None else slice(None)
-        anomaly_band = anomaly.sel(lat=_lat_slicer, lon=_lon_slicer)
+        lat_slicer = lat_slicer if lat_slicer is not None else slice(None)
+        lon_slicer = lon_slicer if lon_slicer is not None else slice(None)
 
-        T = anomaly_band.values.shape[0]
-        n_lat_band = len(anomaly_band.lat)
-        n_lon_band = len(anomaly_band.lon)
+        print(f"Projecting EOF onto band: lat={lat_slicer}, lon={lon_slicer}")
+        data_band = self._data.sel(lat=lat_slicer, lon=lon_slicer)
+
+        T = data_band.values.shape[0]
+        n_lat_band = len(data_band.lat)
+        n_lon_band = len(data_band.lon)
         print(f"Projecting onto band: {n_lat_band} lat x {n_lon_band} lon")
 
         y = eof_modes[:, 0]                                        # (T,)
 
         # Flatten spatial dims -> (T, lat_band * lon_band).
-        anomaly_flat = anomaly_band.values.reshape(T, -1)          # (T, N)
+        anomaly_flat = data_band.values.reshape(T, -1)          # (T, N)
 
         # Raw projection: equivalent to np.dot(gp, y) for every grid point.
         proj_flat = anomaly_flat.T @ y                             # (N,)
@@ -775,7 +785,7 @@ class EOF:
         # (NaN outside the band).
         proj_band = xr.DataArray(
             proj_masked,
-            coords={"lat": anomaly_band.lat.values, "lon": anomaly_band.lon.values},
+            coords={"lat": data_band.lat.values, "lon": data_band.lon.values},
             dims=["lat", "lon"],
         )
         proj_full = proj_band.reindex(lat=full_lat, lon=full_lon, fill_value=np.nan)
@@ -868,18 +878,10 @@ class AnnularModes(BaseMetric):
         self.eof_op.compute_eofs(data, lat_slicer=self.latitude_slicer, lon_slicer=self.longitude_slicer)
         eigenvals = self.eof_op.eigenvals_timeseries()
 
-        data = compute_anomaly(
-            data=data,
-            baseline_period=self.baseline_period,
-            mean_groups=["time.year"],
-            baseline_mean_groups=None,
-            standardize=True,
-        ).rename({"year": "time"}).reset_index("time", drop=True)
-    
         self.latitudes = data.lat.values
         self.longitudes = data.lon.values
         projection = self.eof_op.project_eofs(
-            data, eigenvals,
+            eigenvals,
             lat_slicer=self.latitude_slicer,
             lon_slicer=self.longitude_slicer,
         )
@@ -978,6 +980,7 @@ class NorthernAnnularMode(AnnularModes):
         self,
         method: str = "EOF",
         var: str = "psl",
+        time=["November", "December", "January", "February"],
         plotter_kwargs: dict = None,
         baseline_period: tuple = ("1981-01-01", "2010-12-31"),
         frequency: str = "monthly",
@@ -986,6 +989,7 @@ class NorthernAnnularMode(AnnularModes):
     ) -> None:
         super().__init__(
             method=method,
+            time=time,
             baseline_period=baseline_period,
             plotter_kwargs=plotter_kwargs,
             frequency=frequency,
@@ -1191,6 +1195,37 @@ class RadialSpectrum(BaseMetric):
             )
 
 
+class ZonalSpectrum(BaseMetric):
+    """Zonal (longitudinal) power spectrum averaged over latitude bands."""
+
+    def __init__(
+        self,
+        variables: list,
+        time_instances: list,
+        frequency: str = "monthly",
+        plotter_kwargs: dict = None,
+    ) -> None:
+        super().__init__(variables=variables, frequency=frequency, plotter_kwargs=plotter_kwargs)
+        self.time_instances = time_instances
+        self._freq_plotter = FrequencyPlotter(**self.plotter_kwargs)
+
+class SmallScalesEnergy(BaseMetric):
+    """
+    This class computes the energy content in the small scales of the flow, 
+    which is often associated with turbulence and mixing processes. 
+    The energy content is typically calculated by integrating the power spectrum 
+    over a specified range of wavenumbers corresponding to the small scales.
+
+    Args:
+        BaseMetric (_type_): _description_
+
+    Raises:
+        NotImplementedError: _description_
+        NotImplementedError: _description_
+
+    Returns:
+        _type_: _description_
+    """
 # ============================================================================
 # Distribution metrics
 # ============================================================================
@@ -1211,31 +1246,66 @@ class Distribution(BaseMetric):
         plotter_kwargs: dict = None,
     ) -> None:
         super().__init__(variables=variables, plotter_kwargs=plotter_kwargs)
+        # ``time`` is expected to be a list of [start, end] pairs, e.g.
+        # [["2020-01-01", "2020-12-31"], ["2021-01-01", "2021-12-31"]].
+        # Pass ``None`` to skip time filtering entirely.
         self.time = time
         self.frequency = frequency
 
     def compute(self, data: xr.DataArray) -> np.ndarray:
         raise NotImplementedError
 
-    def visualize(self, distributions: dict, variable_name: str = "Variable") -> None:
+    def visualize(
+        self,
+        distributions: dict,
+        variable_name: str = "Variable",
+        time_range=None,
+    ) -> None:
         raise NotImplementedError
 
     def evaluate(self, data_containers) -> None:
+        # Iterate over every [start, end] time range supplied; fall back to a
+        # single pass with no time filtering when ``self.time`` is None.
+        time_ranges = self.time if self.time is not None else [None]
         for var in self.variables:
             name, pressure_level = var
-            distributions: dict = {}
-            for dc in data_containers:
-                data = dc.get_variable_data(name=name, pressure_level=pressure_level, frequency=self.frequency)
-                if "stat" in data.dims:
-                    data = data.sel(stat="mean", drop=True)
-                if self.time is not None:
-                    data = data.sel(time=slice(
-                        np.datetime64(self.time[0], "ns"),
-                        np.datetime64(self.time[1], "ns"),
-                    ))
-                distributions[dc.model_label] = (self.compute(data), dc.model_color)
+            for time_range in time_ranges:
+                distributions: dict = {}
+                for dc in data_containers:
+                    data = dc.get_variable_data(
+                        name=name, 
+                        pressure_level=pressure_level, 
+                        frequency=self.frequency
+                    )
 
-            self.visualize(distributions, variable_name=(name, pressure_level))
+                    if "stat" in data.dims:
+                        data = data.sel(stat="mean", drop=True)
+
+                    if time_range is not None:
+                        # Check if the requested time range overlaps with the data's time span.
+                        data_start = data.time.min().values
+                        data_end = data.time.max().values
+                        bool1 = np.datetime64(time_range[1], "ns") < data_start
+                        bool2 = np.datetime64(time_range[0], "ns") > data_end
+                        if bool1 or bool2:
+                            print(
+                                f"  Warning: Time range {time_range} is outside "
+                                f"the data time span for {dc.model_label}. "
+                                f"Skipping this range for this model.")
+                            
+                            continue
+                        
+                        data = data.sel(time=slice(
+                            np.datetime64(time_range[0], "ns"),
+                            np.datetime64(time_range[1], "ns"),
+                        ))
+                    distributions[dc.model_label] = (self.compute(data), dc.model_color)
+
+                self.visualize(
+                    distributions,
+                    variable_name=(name, pressure_level),
+                    time_range=time_range,
+                )
 
 
 class Histogram(Distribution):
@@ -1258,23 +1328,20 @@ class Histogram(Distribution):
     def compute(self, data: xr.DataArray) -> np.ndarray:
         return data.values.flatten()
 
-    def visualize(self, data: dict, variable_name: str = "Variable") -> None:
+    def visualize(
+        self,
+        data: dict,
+        variable_name: str = "Variable",
+        time_range=None,
+    ) -> None:
         fig, ax = plt.subplots(1, 1, figsize=self.figsize, dpi=self.dpi)
         for label, (d, color) in data.items():
-            #mean = np.mean(d)
-            #std = np.std(d)
-            #skewness = stats.skew(d)
-            #kurtosis = stats.kurtosis(d)
-
-            #legend_label = (
-            #    f"{label} (mean={mean:.2f}, std={std:.2f}, "
-            #    f"skew={skewness:.2f}, kurtosis={kurtosis:.2f})"
-            #)
             legend_label = f"{label}"
             ax.hist(
                 d, alpha=0.5, label=legend_label, color=color,
                 bins=100, histtype="step", density=True, log=True,
             )
+
         if len(data) > 2:
             plt.legend(bbox_to_anchor=(0.5, -0.1), loc="center", fontsize=8, ncol=2)
         else:
@@ -1283,13 +1350,23 @@ class Histogram(Distribution):
         plt.grid(True, which="both", linestyle="-.", linewidth=0.5)
         plt.xlabel(self.cmor_units.get(variable_name[0]))
         plt.ylabel("Density")
+
         if variable_name[1] is None:
-            variable_name = variable_name[0]
+            var_label = variable_name[0]
         else:
-            variable_name = f"{variable_name[0]} ({variable_name[1]}hPa)"
-        plt.title(f"Histogram of {variable_name}")
-        os.makedirs(os.path.join(self.output_path, f"{self.time[0]}_{self.time[1]}"), exist_ok=True)
-        plt.savefig(os.path.join(self.output_path, f"{self.time[0]}_{self.time[1]}", f"histogram_{variable_name}.png"))
+            var_label = f"{variable_name[0]} ({variable_name[1]}hPa)"
+
+        plt.title(f"Histogram of {var_label}")
+
+        # Build a per-time-range sub-directory so each time instance has its
+        # own output folder.
+        if time_range is not None:
+            time_dir = f"{time_range[0]}_{time_range[1]}"
+        else:
+            time_dir = "all_times"
+        out_dir = os.path.join(self.output_path, time_dir)
+        os.makedirs(out_dir, exist_ok=True)
+        plt.savefig(os.path.join(out_dir, f"histogram_{var_label}.png"))
         plt.close()
 
 

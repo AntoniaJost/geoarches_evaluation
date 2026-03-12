@@ -18,8 +18,8 @@ def _remove_south_pole_lat(x):
         return x[:-1, :]
 
 
-def compute_radial_spectrum(x):
-    """Compute the radial spectrum of a 2D grid."""
+def compute_spectral_coefficients(x):
+    """Compute the spectral coefficients of a 2D grid."""
     x = _remove_south_pole_lat(x)
 
     if isinstance(x, xr.DataArray):
@@ -27,8 +27,25 @@ def compute_radial_spectrum(x):
 
     grid = pysh.SHGrid.from_array(x)
 
-    return grid.expand().spectrum()
+    return grid.expand()
 
+def compute_radial_spectrum(x):
+    """Compute the radial spectrum of a 2D grid."""
+    coeffs = compute_spectral_coefficients(x)
+
+    return coeffs.spectrum()
+
+def filter_spectral_coefficients(coeffs, lmin, lmax):
+    """Filter the spectral coefficients by degree."""
+    coeffs_copy = coeffs.copy()
+    coeffs_copy.coeffs[:, :lmin, :] = 0
+    coeffs_copy.coeffs[:, lmax + 1 :, :] = 0
+
+    return coeffs_copy
+
+def expand_to_grid(coeffs):
+    """Expand the spectral coefficients back to a grid."""
+    return pysh.expand().MakeGridDH(coeffs, sampling=2)
 
 def compute_radial_spectra(dataset):
     """Compute the radial spectra for all 2D grids in a dataset."""

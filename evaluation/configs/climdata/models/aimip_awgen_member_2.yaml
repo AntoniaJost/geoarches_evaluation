@@ -1,0 +1,7 @@
+"AWGen-2":
+  path_to_daily_data: null
+  path_to_monthly_data: "/work/bk1450/a270220/cmorised_awm/forced_sst/member2/Amon"
+  model_label: "ArchesWeatherGen (Member=2) SST=0k"
+  color: "#0000AA"  # some other blue color
+  period: ["1979-01-01", "2024-12-31"]
+  is_reference: False

@@ -1,0 +1,17 @@
+"AWGen-Unforced-Ensemble":
+  path_to_daily_data:
+    - "/work/bk1450/a270220/cmorised_awm/free_run_control/member1/day"
+    - "/work/bk1450/a270220/cmorised_awm/free_run_control/member2/day"
+    - "/work/bk1450/a270220/cmorised_awm/free_run_control/member3/day"
+    - "/work/bk1450/a270220/cmorised_awm/free_run_control/member4/day"
+    - "/work/bk1450/a270220/cmorised_awm/free_run_control/member5/day"
+  path_to_monthly_data: 
+    - "/work/bk1450/a270220/cmorised_awm/free_run_control/member1/Amon"
+    - "/work/bk1450/a270220/cmorised_awm/free_run_control/member2/Amon"
+    - "/work/bk1450/a270220/cmorised_awm/free_run_control/member3/Amon"
+    - "/work/bk1450/a270220/cmorised_awm/free_run_control/member4/Amon"
+    - "/work/bk1450/a270220/cmorised_awm/free_run_control/member5/Amon"
+  model_label: "AWGen Unforced Ensemble (SST=0k)"
+  color: [0.0, 1.0, 1.0]  # some cyan color
+  period: ["1978-10-01", "2014-12-31"]
+  is_reference: False

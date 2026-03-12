@@ -1,6 +1,7 @@
 NorthernAnnularMode:
   _target_: metrics.module.NorthernAnnularMode
   var: "zg"
+  time: ["November", "December", "January", "February"]
   method: "EOF"
   frequency: "monthly"
   latitude_bands: [20, 90]

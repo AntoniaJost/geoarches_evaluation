@@ -4,6 +4,32 @@ import numpy as np
 from scipy import stats
 
 
+def compute_spread_skill_ratio(forecast: xr.DataArray, observation: xr.DataArray) -> xr.DataArray:
+    """
+    Computes the spread skill ratio of an ensemble forecast. 
+    The forecast DataArray contains the members as a dimension "member"
+
+
+    Args:
+        forecast (xr.DataArray): The ensemble forecast data with a "member" dimension.
+        observation (xr.DataArray): The observed data.
+
+    Returns:
+        xr.DataArray: The spread-skill ratio.
+    """
+
+    # Compute the ensemble mean and spread
+    ensemble_mean = forecast.mean(dim="member")
+    ensemble_spread = forecast.std(dim="member")
+
+    # Compute the skill (e.g., RMSE) between the ensemble mean and the observation
+    skill = np.sqrt(((ensemble_mean - observation) ** 2).mean(dim="time"))
+
+    # Compute the spread-skill ratio
+    spread_skill_ratio = ensemble_spread / skill
+
+    return spread_skill_ratio
+
 def compute_regression_coefficients_2d(x, y):
     """
     This function computes the linear regression coefficients (slope and intercept)
@@ -82,7 +108,6 @@ def kinetic_energy(data, level, latitude, longitude):
 
     ke = 0.5 * (u**2 + v**2)
     return ke
-
 
 def get_time_slicer(base_period=None):
     """
