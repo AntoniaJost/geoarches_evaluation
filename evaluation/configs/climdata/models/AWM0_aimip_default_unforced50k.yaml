@@ -1,0 +1,6 @@
+"AWM0_aimip_default_unforced-50k":
+  "path_to_daily_data": "/home/b/b383170/repositories/geoarches_evaluation/evaluation/rollouts/cmorised_aimip/AWM0-aimip_default-unforced-ckpt=50k/0k/1978-10-01/mem1/4_cmorisation/day"
+  "path_to_monthly_data": "/home/b/b383170/repositories/geoarches_evaluation/evaluation/rollouts/cmorised_aimip/AWM0-aimip_default-unforced-ckpt=50k/0k/1978-10-01/mem1/4_cmorisation/Amon"
+  "model_label": "AWM0-aimip-50k (Member=1) SST=0k"
+  "color": [1., 0., 1.] # some blue color
+  "period": ["1979-01-01", "2024-12-31"]

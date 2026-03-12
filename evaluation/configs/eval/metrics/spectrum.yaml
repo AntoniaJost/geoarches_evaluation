@@ -1,0 +1,18 @@
+spectrum:
+  _target_: metrics.module.RadialSpectrum
+  frequency: "daily"
+  time_instances: 
+    - [1978-10-03, 1978-10-03]
+    - [1979-01-01, 1979-12-31]
+  variables: 
+    - [hus, 850]
+    - [hus, 700]
+    - [uas, Null]
+    - [vas, Null]
+    - [ta, 850]
+    - [ua, 850]
+    - [va, 850]
+    - [zg, 500]
+  plotter_kwargs:
+    output_path: "radial_spectrum"
+    linewidth: 1.0

@@ -1,0 +1,15 @@
+defaults:
+  - _self_
+  #- models/awgen_aimip4k_ens.yaml
+  #- models/awgen_aimip2k_ens.yaml
+  #- models/awgen_unforced_ens.yaml
+  #- models/archesweather_aimip_ens.yaml
+  #- models/awgen_aimip_ens.yaml
+  #- models/awgen_aimip2k_ens.yaml
+  #- models/awgen_aimip4k_ens.yaml
+  #- models/amip_mpi-m-esm1-hr.yaml
+  - models/era5_1x1.yaml
+
+
+
+

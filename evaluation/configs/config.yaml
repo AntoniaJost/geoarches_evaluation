@@ -1,0 +1,9 @@
+# Specify which configs to use.
+defaults:  
+  - _self_
+  - climdata: data  
+  - eval: metrics
+
+output_path: "./evalstore/results/test_refactor"
+latitude: 181
+

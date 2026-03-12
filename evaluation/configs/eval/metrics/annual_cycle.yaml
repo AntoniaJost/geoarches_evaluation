@@ -1,0 +1,22 @@
+AnnualCycle:
+  _target_: metrics.module.SeasonalCycles
+  variables:
+    - {"name": "tos", "pressure_level": null}
+    - {"name": "tas", "pressure_level": null}
+    - {"name": "uas", "pressure_level": null}
+    - {"name": "hus", "pressure_level": 70000}
+  mean_groups:
+    - "time.year"
+    - "time.month"
+  baseline_mean_groups:
+    - "time.month"
+  detrend: False
+  linear_trend: True
+  compute_anomalies: False
+  baseline_period: ["1981-01-01", "2010-12-31"]
+  plotter_kwargs:
+    output_path: "timeseries/annual_cycle"
+    figsize: [12, 8]  
+    linewidth: 1.0
+
+    

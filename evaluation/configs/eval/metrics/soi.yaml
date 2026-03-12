@@ -1,0 +1,6 @@
+SOI:
+  _target_: metrics.module.SouthernOscillationIndex
+  baseline_period: ["1981-01-01", "2010-12-31"]
+  spectrum: True
+  plotter_kwargs:
+    output_path: "soi"

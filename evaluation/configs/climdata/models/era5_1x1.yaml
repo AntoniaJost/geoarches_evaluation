@@ -1,0 +1,7 @@
+era5_1x1:
+  path_to_daily_data: "/home/b/b383170/repositories/geoarches_evaluation/data/era5_1x1_averaged_cmor/4_cmorisation/day"
+  path_to_monthly_data: "/home/b/b383170/repositories/geoarches_evaluation/data/era5_1x1_averaged_cmor/4_cmorisation/Amon"
+  model_label: "ERA5 (Daily Avg.)"
+  color: [0.0, 0.0, 0.0]  # some black color
+  period: ["1978-10-01", "2014-12-31"]
+  is_reference: True

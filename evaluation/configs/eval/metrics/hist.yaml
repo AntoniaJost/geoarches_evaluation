@@ -1,0 +1,19 @@
+Histogram: 
+  _target_: metrics.module.Histogram
+  time: 
+    - ["1978-10-01", "1978-10-03"]
+    - ["1978-10-07", "1978-10-07"]
+    - ["1979-01-01", "1979-01-01"]
+    - ["1979-01-01", "1979-12-31"]
+  frequency: "daily"
+  variables: 
+    - ["uas", null]
+    - ["vas", null]
+    - ["tas", null]
+    - ["ua", 85000]
+    - ["va", 85000]
+    - ["ta", 85000]
+    - ["hus", 85000]
+  plotter_kwargs:
+    output_path: "histogram"
+    linewidth: 1.0

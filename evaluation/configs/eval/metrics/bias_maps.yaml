@@ -1,0 +1,12 @@
+BiasMaps:
+  _target_: metrics.module.XYBiasMaps
+  xdim: "lon"
+  ydim: "lat"
+  temporal_selection: ["annual"]
+  variables: 
+    - {name: "tas", pressure_level: null} 
+    - {name: "tos", pressure_level: null}
+    - {name: "uas", pressure_level: null}
+    - {name: "hus", pressure_level: 70000}
+  plotter_kwargs:
+    output_path: "BiasMaps"
