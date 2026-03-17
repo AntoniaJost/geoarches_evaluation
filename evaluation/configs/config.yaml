@@ -4,6 +4,6 @@ defaults:
   - climdata: data  
   - eval: metrics
 
-output_path: "./evalstore/results/test_refactor"
+output_path: "./evalstore/results/paper_v1"
 latitude: 181
 

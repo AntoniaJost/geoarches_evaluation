@@ -76,18 +76,18 @@ class GeoClimate:
 class CMORDataContainer:
     
     variable_names = {   
-            "hus": "specific_humidity",
-            "psl": "sea_level_pressure",
-            "ta": "air_temperature",
-            "tas": "surface_air_temperature",
-            "tos": "sea_surface_temperature",
-            "ua": "eastward_wind",
-            "uas": "eastward_near_surface_wind",
-            "vas": "northward_near_surface_wind",
-            "va": "northward_wind",
-            "zg": "geopotential_height",
-            "siconc": "sea_ice_cover",
-            "wap": "vertical_velocity",
+            "hus": "Specific Humidity",
+            "psl": "Sea Level Pressure",
+            "ta": "Air Temperature",
+            "tas": "Surface Air Temperature",
+            "tos": "Sea Surface Temperature",
+            "ua": "Eastward Wind",
+            "uas": "Eastward Near Surface Wind",
+            "vas": "Northward Near Surface Wind",
+            "va": "Northward Wind",
+            "zg": "Geopotential Height",
+            "siconc": "Sea Ice Cover",
+            "wap": "Vertical Velocity",
     }
     
 
@@ -140,7 +140,7 @@ class CMORDataContainer:
         print("Initialized CmorDataContainer for ", self.model_label)
         print("#" * 72)
 
-    def load_data(self, path, var_name, frequency="monthly"):
+    def load_data(self, path, var_name, frequency="monthly", all_members=False):
         """
         Open NetCDF files for *var_name* as a dask-backed lazy dataset.
 
@@ -182,11 +182,12 @@ class CMORDataContainer:
             if var_name == "tos":
                 var[var_name] = var[var_name] + 273.15
             # These reductions stay lazy (dask graph nodes).
-            var_mean = var.mean("member")
-            var_std  = var.std("member")
-            var = xr.concat([var_mean, var_std], dim="stat").assign_coords(
-                stat=["mean", "std"]
-            )
+            if not all_members:
+                var_mean = var.mean("member")
+                var_std  = var.std("member")
+                var = xr.concat([var_mean, var_std], dim="stat").assign_coords(
+                    stat=["mean", "std"]
+                )
         else:
             var = member_datasets[0]
             if var_name == "tos":
@@ -247,9 +248,9 @@ class CMORDataContainer:
         ds = ds.interp(lat=target_lat, lon=target_lon, method="linear")
         return ds
 
-    def _load_single_variable(self, path, var_name, frequency):
+    def _load_single_variable(self, path, var_name, frequency, all_members=False):
         """Load *var_name* lazily and store in the appropriate cache."""
-        ds = self.load_data(path, var_name, frequency=frequency)
+        ds = self.load_data(path, var_name, frequency=frequency, all_members=all_members)
         return ds
 
     def preload_all(self, frequency="monthly"):
@@ -277,7 +278,10 @@ class CMORDataContainer:
         self.preload_all("daily")
 
 
-    def get_variable_data(self, name, pressure_level=None, frequency="monthly"):
+    def get_variable_data(
+            self, name, pressure_level=None, 
+            frequency="monthly", all_members=False
+    ):
         """
         Return a (dask-backed, lazy) DataArray for *name* at the given frequency.
 
@@ -314,7 +318,7 @@ class CMORDataContainer:
 
         # Load and cache lazily on first access.
         if name not in cache:
-            cache[name] = self._load_single_variable(path, name, frequency)
+            cache[name] = self._load_single_variable(path, name, frequency, all_members=all_members)
 
         data = cache[name]
         if data is None:

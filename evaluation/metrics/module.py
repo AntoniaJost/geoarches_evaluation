@@ -36,6 +36,7 @@ import os
 
 import matplotlib.pyplot as plt
 import numpy as np
+import omegaconf
 import pandas as pd
 import xarray as xr
 from matplotlib.colors import CenteredNorm
@@ -77,6 +78,32 @@ from metrics.base import (
 )
 from plot.modules import FrequencyPlotter, TimeseriesPlotter, TaylorDiagramPlotter
 from plot.projections import CartopyProjectionPlotter
+from evaltools.module import CMORDataContainer as _CMORDataContainer
+
+
+# ---------------------------------------------------------------------------
+# Module-level helper: human-readable variable label
+# ---------------------------------------------------------------------------
+_VARIABLE_LONG_NAMES: dict = _CMORDataContainer.variable_names
+
+
+def _long_var_label(short_name: str, pressure_level=None) -> str:
+    """Return a human-readable label for *short_name*, optionally with level.
+
+    Parameters
+    ----------
+    short_name:
+        CMOR short name (e.g. ``"ua"``).
+    pressure_level:
+        Pressure level **in Pascal** (e.g. 70000).  Divided by 100 to produce
+        the hPa value shown in the label.  Pass ``None`` to omit the level.
+    """
+    long_name = _VARIABLE_LONG_NAMES.get(short_name, short_name)
+    print(pressure_level)
+    if pressure_level is None:
+        return long_name
+    hpa = int(round(pressure_level / 100))
+    return f"{long_name} ({hpa} hPa)"
 
 
 # ============================================================================
@@ -684,33 +711,33 @@ class EOF:
         self._data = data
 
         # time values set in format (yyyy-mm)
-        self.time = self._data.time.values.astype("datetime64[M]").astype(str)
-
-        self._data = compute_anomaly(
+        self.time = list(set(self._data.time.values.astype("datetime64[M]").astype(str)))
+        self._centred_data = compute_anomaly(
             self._data,
             baseline_period=None,
             mean_groups=["time.year", "time.month"],
             baseline_mean_groups=["time.month"],
         ).stack({"time": ["year", "month"]}).reset_index("time", drop=True)
-
-        self._data = self._data.transpose("time", "lat", "lon").dropna(dim="time", how="any")
+        # (yyyy, mm) → yyyy-mm string format for easier plotting and interpretation.
+        self._centred_data = self._centred_data.transpose("time", "lat", "lon").dropna(dim="time", how="any")
         
-        self._data.values = self._data.values * compute_latitude_weights(
-            self._data.lat.values, self._data.lon.values
+        self._centred_data.values = self._centred_data.values * compute_latitude_weights(
+            self._centred_data.lat.values, self._centred_data.lon.values
         )
 
 
         eof_modes, A, Lh, E = compute_eof(
-            self._data.sel(lat=lat_slicer, lon=lon_slicer), 
+            self._centred_data.sel(lat=lat_slicer, lon=lon_slicer), 
             n_modes=None
         )
-        print(Lh.shape)
-        print(Lh)
+
         self.eof_modes = eof_modes
-        self.norm_coeff = Lh * Lh / (self.eof_modes.shape[0] - 1)
+        self.norm_coeff = self.eof_modes.shape[0] - 1
+        self._L = Lh * Lh / self.norm_coeff
+
         # Fraction of total variance explained by the leading mode.
-        total_var = Lh.sum() 
-        self.explained_variance_ratio = Lh[0] / total_var if total_var > 0 else 0.0
+        total_var = self._L.sum() 
+        self.explained_variance_ratio = self._L[0] / total_var if total_var > 0 else 0.0
         print(f"Explained variance ratio of leading mode: {self.explained_variance_ratio:.4f}")
 
 
@@ -743,22 +770,22 @@ class EOF:
             Shape ``(lat, lon)`` matching *anomaly*. Values are NaN
             outside the requested band and 0 where not significant inside.
         """
-        full_lat = self._data.lat.values
-        full_lon = self._data.lon.values
+        full_lat = self._centred_data.lat.values
+        full_lon = self._centred_data.lon.values
 
         # Restrict to the desired band for projection and p-value stats.
         lat_slicer = lat_slicer if lat_slicer is not None else slice(None)
         lon_slicer = lon_slicer if lon_slicer is not None else slice(None)
 
         print(f"Projecting EOF onto band: lat={lat_slicer}, lon={lon_slicer}")
-        data_band = self._data.sel(lat=lat_slicer, lon=lon_slicer)
+        data_band = self._centred_data.sel(lat=lat_slicer, lon=lon_slicer)
 
         T = data_band.values.shape[0]
         n_lat_band = len(data_band.lat)
         n_lon_band = len(data_band.lon)
         print(f"Projecting onto band: {n_lat_band} lat x {n_lon_band} lon")
 
-        y = eof_modes[:, 0]                                        # (T,)
+        y = eof_modes[:, 0] / np.sqrt(self._L[0])                                       # (T,)
 
         # Flatten spatial dims -> (T, lat_band * lon_band).
         anomaly_flat = data_band.values.reshape(T, -1)          # (T, N)
@@ -768,7 +795,9 @@ class EOF:
 
         # Vectorised Pearson r (matches stats.linregress p-value).
         x_c = anomaly_flat - anomaly_flat.mean(axis=0, keepdims=True)  # (T, N)
+        x_c = anomaly_flat
         y_c = y - y.mean()                                             # (T,)
+        y_c = y
         r_num = x_c.T @ y_c                                           # (N,)
         r_den = np.sqrt((x_c ** 2).sum(axis=0)) * np.sqrt((y_c ** 2).sum())
         r = np.where(r_den > 0, r_num / r_den, 0.0)                  # (N,)
@@ -779,7 +808,7 @@ class EOF:
         p = 2.0 * stats.t.sf(np.abs(t_stat), df=T - 2)              # (N,)
 
         # Apply significance mask; insignificant grid points become 0.
-        proj_masked = np.where(p < 0.05, proj_flat, 0.0).reshape(n_lat_band, n_lon_band)
+        proj_masked = np.where(p < 0.03, proj_flat, 0.0).reshape(n_lat_band, n_lon_band)
 
         # Build a DataArray for the band, then reindex onto the full grid
         # (NaN outside the band).
@@ -853,9 +882,11 @@ class AnnularModes(BaseMetric):
 
     def slice_time(self, data: xr.DataArray, time) -> xr.DataArray:
         """Select months or a season from *data*."""
-        if isinstance(time, list):
+
+        if isinstance(time, omegaconf.ListConfig) or isinstance(time, list):
+            print("Selecting months: ", time)
             months = [self._month_to_num(m) for m in time]
-            return data.sel(time=data.time.dt.month.isin(months))
+            return data.sel(time=data.time.dt.month.isin(months) )
         if time in ("DJF", "MAM", "JJA", "SON"):
             return data.sel(time=data.time.dt.season == time)
         return data
@@ -872,6 +903,8 @@ class AnnularModes(BaseMetric):
         series.
         """
         data = self.slice_time(data, self.time)
+        print(f"Selected time slice: {data.time.values[180:270]}")
+
         self.latitudes = data.lat.values
         self.longitudes = data.lon.values
 
@@ -885,7 +918,7 @@ class AnnularModes(BaseMetric):
             lat_slicer=self.latitude_slicer,
             lon_slicer=self.longitude_slicer,
         )
-        return data.time.values, projection, eigenvals[:, 0], self.eof_op.explained_variance_ratio
+        return self.eof_op.time, projection, eigenvals[:, 0], self.eof_op.explained_variance_ratio
 
     def regress_against_reference(
         self,
@@ -1165,15 +1198,32 @@ class RadialSpectrum(BaseMetric):
         return radial_spectra
 
     def compute(self, data_containers, variable_name: str, lvl) -> dict:
-        """Return ``{model_label: {instance: spectrum}}`` for all containers."""
+        """Return ``{model_label: {instance: spectrum}}`` for all containers.
+
+        When the data container exposes a ``member`` dimension (ensemble),
+        the radial spectrum is computed independently for each member and the
+        results are averaged, preserving the full distribution of energy at
+        each scale without the smoothing caused by averaging the fields first.
+        """
         radial_spectra = {}
         for dc in data_containers:
             data = dc.get_variable_data(
-                name=variable_name, frequency=self.frequency, pressure_level=lvl
+                name=variable_name, frequency=self.frequency, pressure_level=lvl,
+                all_members=True,
             )
-            if "stat" in data.dims:
-                data = data.sel(stat="mean", drop=True)
-            radial_spectra[dc.model_label] = self.compute_spectrum(data)
+            if "member" in data.dims:
+                # Compute spectrum independently per member, then average.
+                per_member = [
+                    self.compute_spectrum(data.sel(member=m, drop=True))
+                    for m in data.member.values
+                ]
+                avg: dict = {}
+                for instance in per_member[0]:
+                    arrays = [ms[instance] for ms in per_member if instance in ms]
+                    avg[instance] = np.mean(arrays, axis=0)
+                radial_spectra[dc.model_label] = avg
+            else:
+                radial_spectra[dc.model_label] = self.compute_spectrum(data)
         return radial_spectra
 
     def evaluate(self, data_containers) -> None:
@@ -1184,14 +1234,19 @@ class RadialSpectrum(BaseMetric):
             self._log(name, pressure_level)
             radial_spectra = self.compute(data_containers, name, pressure_level)
 
-            short_name = name if pressure_level is None else f"{name} ({pressure_level}hPa)"
+            display_name = _long_var_label(name, pressure_level)
+            # Keep the filename short and filesystem-friendly.
+            if pressure_level is None:
+                fname_var = name
+            else:
+                fname_var = f"{name}_{int(round(pressure_level / 100))}hPa"
 
             self._freq_plotter.plot_radial(
                 model_spectra=radial_spectra,
                 colors=colors,
-                title=f"Radial power spectrum – {short_name}",
+                title=f"Radial power spectrum – {display_name}",
                 ylabel="Power Spectral Density",
-                fname=f"radial_spectrum_{short_name}.png",
+                fname=f"radial_spectrum_{fname_var}.png",
             )
 
 
@@ -1272,14 +1327,15 @@ class Distribution(BaseMetric):
             for time_range in time_ranges:
                 distributions: dict = {}
                 for dc in data_containers:
+                    # Request all members so that each physical realisation is
+                    # treated independently – averaging fields first would smooth
+                    # extremes and distort the distribution.
                     data = dc.get_variable_data(
-                        name=name, 
-                        pressure_level=pressure_level, 
-                        frequency=self.frequency
+                        name=name,
+                        pressure_level=pressure_level,
+                        frequency=self.frequency,
+                        all_members=True,
                     )
-
-                    if "stat" in data.dims:
-                        data = data.sel(stat="mean", drop=True)
 
                     if time_range is not None:
                         # Check if the requested time range overlaps with the data's time span.
@@ -1292,14 +1348,26 @@ class Distribution(BaseMetric):
                                 f"  Warning: Time range {time_range} is outside "
                                 f"the data time span for {dc.model_label}. "
                                 f"Skipping this range for this model.")
-                            
                             continue
-                        
+
                         data = data.sel(time=slice(
                             np.datetime64(time_range[0], "ns"),
                             np.datetime64(time_range[1], "ns"),
                         ))
-                    distributions[dc.model_label] = (self.compute(data), dc.model_color)
+
+                    if "member" in data.dims:
+                        # Compute samples per member and concatenate.  Using
+                        # density=True in the histogram then naturally normalises
+                        # the combined sample, which is equivalent to averaging
+                        # the per-member normalised histograms.
+                        samples = np.concatenate([
+                            self.compute(data.sel(member=m, drop=True))
+                            for m in data.member.values
+                        ])
+                    else:
+                        samples = self.compute(data)
+
+                    distributions[dc.model_label] = (samples, dc.model_color)
 
                 self.visualize(
                     distributions,
@@ -1338,7 +1406,7 @@ class Histogram(Distribution):
         for label, (d, color) in data.items():
             legend_label = f"{label}"
             ax.hist(
-                d, alpha=0.5, label=legend_label, color=color,
+                d, alpha=1.0, label=legend_label, color=color,
                 bins=100, histtype="step", density=True, log=True,
             )
 
@@ -1351,12 +1419,14 @@ class Histogram(Distribution):
         plt.xlabel(self.cmor_units.get(variable_name[0]))
         plt.ylabel("Density")
 
+        var_display = _long_var_label(variable_name[0], variable_name[1])
+        # Keep filenames short and filesystem-safe.
         if variable_name[1] is None:
-            var_label = variable_name[0]
+            var_fname = variable_name[0]
         else:
-            var_label = f"{variable_name[0]} ({variable_name[1]}hPa)"
+            var_fname = f"{variable_name[0]}_{int(round(variable_name[1] / 100))}hPa"
 
-        plt.title(f"Histogram of {var_label}")
+        plt.title(f"Histogram of {var_display}")
 
         # Build a per-time-range sub-directory so each time instance has its
         # own output folder.
@@ -1366,7 +1436,7 @@ class Histogram(Distribution):
             time_dir = "all_times"
         out_dir = os.path.join(self.output_path, time_dir)
         os.makedirs(out_dir, exist_ok=True)
-        plt.savefig(os.path.join(out_dir, f"histogram_{var_label}.png"))
+        plt.savefig(os.path.join(out_dir, f"histogram_{var_fname}.png"))
         plt.close()
 
 
@@ -1492,10 +1562,9 @@ class AnimatedHistogram(Distribution):
             model_data: dict = {}
             for dc in data_containers:
                 da = dc.get_variable_data(
-                    name=name, pressure_level=pressure_level, frequency=self.frequency
+                    name=name, pressure_level=pressure_level, frequency=self.frequency,
+                    all_members=True,
                 )
-                if "stat" in da.dims:
-                    da = da.sel(stat="mean", drop=True)
                 da = da.sel(
                     time=slice(
                         np.datetime64(start, "ns"),
@@ -1506,10 +1575,10 @@ class AnimatedHistogram(Distribution):
 
             unit_label = self.cmor_units.get(name, name)
             if pressure_level is not None:
-                var_title = f"{name} ({pressure_level} hPa)"
-                var_fname = f"{name}_{pressure_level}hPa"
+                var_title = _long_var_label(name, pressure_level)
+                var_fname = f"{name}_{int(round(pressure_level / 100))}hPa"
             else:
-                var_title = name
+                var_title = _long_var_label(name)
                 var_fname = name
 
             # ── figure & update function ─────────────────────────────
@@ -1525,10 +1594,16 @@ class AnimatedHistogram(Distribution):
                 t_end_ns = np.datetime64(milestone, "ns")
 
                 for label, (da, color) in _model_data.items():
-                    subset = (
-                        da.sel(time=slice(t_start_ns, t_end_ns))
-                        .values.flatten()
-                    )
+                    sliced = da.sel(time=slice(t_start_ns, t_end_ns))
+                    if "member" in sliced.dims:
+                        # Concatenate flattened samples from all members so
+                        # that every physical realisation contributes equally.
+                        subset = np.concatenate([
+                            sliced.sel(member=m, drop=True).values.flatten()
+                            for m in sliced.member.values
+                        ])
+                    else:
+                        subset = sliced.values.flatten()
                     finite = subset[np.isfinite(subset)]
                     if finite.size == 0:
                         continue
@@ -1542,7 +1617,7 @@ class AnimatedHistogram(Distribution):
                     ax.hist(
                         finite,
                         bins=100,
-                        alpha=0.5,
+                        alpha=1.0,
                         color=color,
                         label=legend_label,
                         histtype="step",
@@ -1661,20 +1736,26 @@ class TropicalCycloneFrequency(BaseMetric):
 
     # ── Data retrieval helpers ────────────────────────────────────────────────
 
-    def _get_slp(self, dc) -> xr.DataArray:
-        da = dc.get_variable_data(name="psl", pressure_level=None, frequency=self.frequency)
-        if "stat" in da.dims:
-            da = da.sel(stat="mean", drop=True)
+    def _get_slp(self, dc, all_members: bool = True) -> xr.DataArray:
+        da = dc.get_variable_data(
+            name="psl", pressure_level=None, frequency=self.frequency,
+            all_members=all_members,
+        )
         return self._slice_time(da)
 
-    def _get_zg(self, dc) -> xr.DataArray:
-        """Return geopotential stacked over level dimension (time, level, lat, lon)."""
+    def _get_zg(self, dc, all_members: bool = True) -> xr.DataArray:
+        """Return geopotential stacked over level dimension (time, level, lat, lon).
+
+        When *all_members* is True the returned array may carry a ``member``
+        dimension that the caller is responsible for handling.
+        """
         levels = [300, 700]
         arrays = []
         for lev in levels:
-            da = dc.get_variable_data(name="zg", pressure_level=lev, frequency=self.frequency)
-            if "stat" in da.dims:
-                da = da.sel(stat="mean", drop=True)
+            da = dc.get_variable_data(
+                name="zg", pressure_level=lev, frequency=self.frequency,
+                all_members=all_members,
+            )
             da = self._slice_time(da)
             # Ensure a level coordinate exists
             if "level" not in da.dims:
@@ -1694,10 +1775,26 @@ class TropicalCycloneFrequency(BaseMetric):
 
     # ── Core computation ──────────────────────────────────────────────────────
 
+    def _compute_single_realization(
+        self, slp_da: xr.DataArray, zg_da: xr.DataArray, clim_z_da: xr.DataArray
+    ) -> tuple[list[list[dict]], np.ndarray, dict, dict]:
+        """Run TC detection on a single (memberless) realisation."""
+        candidates = detect_tc_candidates(slp_da, zg_da, clim_z_da)
+        tracks = build_tc_tracks(candidates, time_step_hours=self.time_step_hours)
+        freq_map = compute_tc_frequency(tracks, self.lat_bins, self.lon_bins)
+        count_per_year = compute_tc_count_per_year(tracks)
+        count_by_intensity = compute_tc_count_by_intensity(tracks)
+        return tracks, freq_map, count_per_year, count_by_intensity
+
     def compute(
         self, dc, clim_z_da: xr.DataArray
     ) -> tuple[list[list[dict]], np.ndarray, dict, dict]:
         """Run TC detection and tracking for one data container.
+
+        When the container holds multiple ensemble members the detection is
+        performed independently on every member; the frequency map and annual /
+        intensity counts are averaged across members.  All individual tracks
+        are pooled for the track-plot.
 
         Parameters
         ----------
@@ -1712,21 +1809,58 @@ class TropicalCycloneFrequency(BaseMetric):
         tracks :
             List of TC trajectories (list of dicts).
         freq_map :
-            2-D passage-frequency array.
+            2-D passage-frequency array (averaged across members).
         count_per_year :
-            ``{year: count}`` mapping.
+            ``{year: mean_count}`` mapping (averaged across members).
         count_by_intensity :
-            ``{intensity_category: count}`` mapping.
+            ``{intensity_category: mean_count}`` mapping (averaged across members).
         """
-        slp_da = self._get_slp(dc)
-        zg_da = self._get_zg(dc)
+        slp_da = self._get_slp(dc, all_members=True)
+        zg_da = self._get_zg(dc, all_members=True)
 
-        candidates = detect_tc_candidates(slp_da, zg_da, clim_z_da)
-        tracks = build_tc_tracks(candidates, time_step_hours=self.time_step_hours)
-        freq_map = compute_tc_frequency(tracks, self.lat_bins, self.lon_bins)
-        count_per_year = compute_tc_count_per_year(tracks)
-        count_by_intensity = compute_tc_count_by_intensity(tracks)
-        return tracks, freq_map, count_per_year, count_by_intensity
+        if "member" in slp_da.dims:
+            members = slp_da.member.values
+            all_tracks: list = []
+            all_freq_maps: list = []
+            all_count_yr: list = []
+            all_count_int: list = []
+
+            for m in members:
+                slp_m = slp_da.sel(member=m, drop=True)
+                # zg may or may not have a member dim of the same size
+                zg_m = (
+                    zg_da.sel(member=m, drop=True)
+                    if "member" in zg_da.dims
+                    else zg_da
+                )
+                t, fm, cyr, cint = self._compute_single_realization(
+                    slp_m, zg_m, clim_z_da
+                )
+                all_tracks.extend(t)
+                all_freq_maps.append(fm)
+                all_count_yr.append(cyr)
+                all_count_int.append(cint)
+
+            # Average frequency map across members
+            avg_freq_map = np.mean(all_freq_maps, axis=0)
+
+            # Average per-year counts across members
+            all_years = {yr for cpy in all_count_yr for yr in cpy}
+            avg_count_yr = {
+                yr: float(np.mean([cpy.get(yr, 0) for cpy in all_count_yr]))
+                for yr in all_years
+            }
+
+            # Average per-intensity counts across members
+            all_cats = {cat for cbi in all_count_int for cat in cbi}
+            avg_count_int = {
+                cat: float(np.mean([cbi.get(cat, 0) for cbi in all_count_int]))
+                for cat in all_cats
+            }
+
+            return all_tracks, avg_freq_map, avg_count_yr, avg_count_int
+        else:
+            return self._compute_single_realization(slp_da, zg_da, clim_z_da)
 
     # ── Visualisation ─────────────────────────────────────────────────────────
 
@@ -1864,7 +1998,11 @@ class TropicalCycloneFrequency(BaseMetric):
         # --- climatology ---------------------------------------------------
         ref_label, ref_dc = self._reference(data_containers)
         clim_dc = ref_dc if ref_dc is not None else data_containers[0]
-        zg_clim_raw = self._get_zg(clim_dc)
+        zg_clim_raw = self._get_zg(clim_dc, all_members=True)
+        # For the climatological reference we use the ensemble mean so that the
+        # day-of-year climatology is as smooth and representative as possible.
+        if "member" in zg_clim_raw.dims:
+            zg_clim_raw = zg_clim_raw.mean("member")
         clim_z_da = compute_clim_z_dayofyear(zg_clim_raw)
         print(
             f"Using '{clim_dc.model_label}' as geopotential climatology source."

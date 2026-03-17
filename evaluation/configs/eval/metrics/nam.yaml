@@ -3,7 +3,7 @@ NorthernAnnularMode:
   var: "zg"
   time: ["November", "December", "January", "February"]
   method: "EOF"
-  frequency: "monthly"
+  frequency: "daily"
   latitude_bands: [20, 90]
   longitude_bands: Null
   plotter_kwargs:

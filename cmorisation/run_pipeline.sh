@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=AWM11-aimip_default-unforced
+#SBATCH --job-name=AWM-midx3-aimip-sst0k
 #SBATCH --time=08:00:00
 #SBATCH --partition=compute
 #SBATCH --account=bk1450
@@ -39,9 +39,9 @@ set -euo pipefail
 ### ----------------------------
 
 # IDEALLY, ALL YOU NEED TO TOUCH IS WITHIN THIS BLOCK. ADJUST ACCORDING TO YOUR DATA & STRUCTURE
-MODEL_TAG="AWM11-aimip_default-unforced" # part of folder path of input data
-NAME="AWM11-aimip_default-unforced" #"ArchesWeather", "ArchesWeatherGen"
-MEMBER="4" # typically 1 to 5
+MODEL_TAG="ArchesWeather" # part of folder path of input data
+NAME="ArchesWeather" #"ArchesWeather", "ArchesWeatherGen"
+MEMBER="3" # typically 1 to 5
 ENSEMBLE="r${MEMBER}i1p1f1"
 SCENARIO="0k"
 INIT_TIME="1978-10-01" # timespan of your input files
@@ -54,9 +54,14 @@ TIMESPANS_DAILY=(
   # '["2013-01-01","2014-12-31"]'
 ) # timespan(s) for which daily data is wanted. Has to be of format ["start date", "end date"]. if aimip=true timespan will be overwritten by aimip requirements
 AIMIP="False" # "true" or "false"
-RUN_DIR="/work/bk1450/b383170/rollouts/cmorised_aimip/${MODEL_TAG}/${SCENARIO}/${INIT_TIME}/mem${MEMBER}" # working directory where all output will be stores
+if [[ "${AIMIP,,}" == "true" ]]; then # spaces are important, don't change!!
+  SUB_DIR="aimip"   # == aimip if AIMIP=true else == full
+else
+  SUB_DIR="full"
+fi
+RUN_DIR="/work/bk1450/b383170/rollouts/cmorised_aimip/${MODEL_TAG}/${SUB_DIR}/${SCENARIO}/${INIT_TIME}/mem${MEMBER}" # working directory where all output will be stores
 REPO_DIR="/work/bk1450/b383170/repositories/geoarches_evaluation/cmorisation" # directory of the repository (important: with "cmorisation" folder!)
-LOG_DIR="/work/bk1450/b383170/rollouts/cmorised_aimip/${MODEL_TAG}/${SCENARIO}/${INIT_TIME}/mem${MEMBER}/logs" # where you want your logs
+LOG_DIR="/work/bk1450/b383170/rollouts/cmorised_aimip/${MODEL_TAG}/${SUB_DIR}/${SCENARIO}/${INIT_TIME}/mem${MEMBER}/logs" # where you want your logs
 
 if [[ "${AIMIP,,}" == "true" ]]; then # spaces are important, don't change!!
 # DO NOT TOUCH THESE, they are the aimip requirements
