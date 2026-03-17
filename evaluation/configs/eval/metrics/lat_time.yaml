@@ -1,0 +1,10 @@
+LatTime:
+  _target_: metrics.module.LatTimeMap
+  xdim: "time"
+  ydim: "lat"
+  temporal_selection: ["annual"]
+  variables: 
+    #- {name: "tas", pressure_level: null} 
+    - {name: "zg", pressure_level: 50000}
+  plotter_kwargs:
+    output_path: "LatTime"

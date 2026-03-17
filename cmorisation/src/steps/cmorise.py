@@ -68,7 +68,8 @@ def _post_ncatted(path, var, treat_as_plev=False):
 
 class CmoriseStep(Step):
     def run(self):
-
+        
+        print(f"{GREEN} [CmoriseStep] Starting CMORisation step...")
         cfg = self.cfg
         work_dir       = cfg['base_dir']
         metadata_path  = cfg['metadata_path']
@@ -81,14 +82,22 @@ class CmoriseStep(Step):
         frequency = {'monthly': 'mon', 'daily': 'day'} 
         zg_to_500      = cfg.get('zg_to_500', False)
         time_slice     = cfg.get('time_slice_daily', None)
+
+        print(f"{GREEN} [CmoriseStep] Loaded configuration" )
+
         # generate tracking id (cmip convention)
         tracking_id = str(uuid.uuid4())
+
+        print(f"{GREEN} [CmoriseStep] Generated tracking_id: {tracking_id}" )
 
         # load variable metadata from yaml file
         def load_variable_metadata(path):
             with open(path, "r") as f:
                 return yaml.safe_load(f)
+        print("metadata_path:", metadata_path)
         metadata = load_variable_metadata(metadata_path)
+
+        print(f"{GREEN} [CmoriseStep] Loaded variable metadata from {metadata_path}")
 
         # process each temporal scale (daily/monthly)
         for scale in scales:
@@ -102,6 +111,7 @@ class CmoriseStep(Step):
                 input_dir = os.path.join(work_dir, scale, '*', grid, '*.nc')
                 files = sorted(glob.glob(input_dir))
 
+            print("Files to process:", len(files))
             for fname in files:
                 if not fname.endswith(".nc"):
                     continue

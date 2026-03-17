@@ -1,0 +1,6 @@
+TropicalCyclones:
+  _target_: metrics.module.TropicalCycloneFrequency
+  time: ["2000-01-01", "2014-12-31"]
+  frequency: "daily"
+  plotter_kwargs:
+    output_path: "tropical_cyclones"

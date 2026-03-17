@@ -1,0 +1,11 @@
+pl_lat:
+  _target_: metrics.module.XYPlot
+  x: latitude
+  y: level
+  time: ["annual"]
+  variables:
+    - ["temperature", Null]
+    - ["specific_humidity", Null]
+    - ["10m_u_component_of_wind", Null]
+  latitude: 181
+  plot_type: contour

@@ -41,6 +41,7 @@ def main():
 
     # run each step and report success or failure
     for step in steps:
+        print(f"➡️ Starting {step.name}...")
         try:
             step.run()
             success(logger, f"➡️ {step.name} done")

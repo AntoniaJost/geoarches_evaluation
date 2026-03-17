@@ -1,0 +1,17 @@
+"AWGen-Ensemble-4k":
+  path_to_daily_data: 
+    - "/work/bk1450/a270220/cmorised_awm/forced_sst_4K/member1/day"
+    - "/work/bk1450/a270220/cmorised_awm/forced_sst_4K/member2/day"
+    - "/work/bk1450/a270220/cmorised_awm/forced_sst_4K/member3/day"
+    - "/work/bk1450/a270220/cmorised_awm/forced_sst_4K/member4/day"
+    - "/work/bk1450/a270220/cmorised_awm/forced_sst_4K/member5/day"
+  path_to_monthly_data: 
+    - "/work/bk1450/a270220/cmorised_awm/forced_sst_4K/member1/Amon"
+    - "/work/bk1450/a270220/cmorised_awm/forced_sst_4K/member2/Amon"
+    - "/work/bk1450/a270220/cmorised_awm/forced_sst_4K/member3/Amon"
+    - "/work/bk1450/a270220/cmorised_awm/forced_sst_4K/member4/Amon"
+    - "/work/bk1450/a270220/cmorised_awm/forced_sst_4K/member5/Amon"
+  model_label: "AWGen Ensemble (SST=4k)"
+  color: [0.6, 0.0, 0.6]  # some blue color
+  period: ["1979-01-01", "2024-12-31"]
+  is_reference: False
