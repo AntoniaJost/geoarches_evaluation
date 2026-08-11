@@ -2,11 +2,35 @@ BiasMaps:
   _target_: metrics.module.XYBiasMaps
   xdim: "lon"
   ydim: "lat"
+  compute_rmse: true
+  stack_models_in_rows: true
   temporal_selection: ["annual"]
+  p95: True
   variables: 
-    - {name: "tas", pressure_level: null} 
-    - {name: "tos", pressure_level: null}
-    - {name: "uas", pressure_level: null}
+    #- {name: "hus", pressure_level: 85000}
+    #- {name: "ta", pressure_level: 85000}
+    #- {name: "ua", pressure_level: 85000}
+    - {name: "tas", pressure_level: null}
+    - {name: "ua", pressure_level: 85000}
     - {name: "hus", pressure_level: 70000}
+    #- {name: "psl", pressure_level: null}
+    #- {name: "ua", pressure_level: 20000}
+    #- {name: "va", pressure_level: 20000}
+    #- {name: "ua", pressure_level: 25000}
+    #- {name: "va", pressure_level: 25000}
+    #- {name: "ua", pressure_level: 30000}
+    #- {name: "va", pressure_level: 30000}
+    #- {name: "tas", pressure_level: null}
+    #- {name: "uas", pressure_level: null}
+    #- {name: "vas", pressure_level: null}
+    #
+    #- {name: "va", pressure_level: 85000}
+    #- {name: "psl", pressure_level: null}
+    #- {name: "zg", pressure_level: 50000}
+
+
+    #- {name: "tos", pressure_level: null}
+
   plotter_kwargs:
     output_path: "BiasMaps"
+    dpi: 300

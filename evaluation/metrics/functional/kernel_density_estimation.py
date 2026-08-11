@@ -1,3 +1,4 @@
+import logging
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -5,6 +6,8 @@ from scipy.stats import gaussian_kde
 from scipy.stats import linregress
 import matplotlib.gridspec as gridspec
 import xarray as xr
+
+logger = logging.getLogger(__name__)
 
 
 def _kde_1d(data: np.ndarray, bandwidth: str | float = "scott"):
@@ -51,10 +54,11 @@ def _global_monthly_anomalies(ds: xr.Dataset, var: str, level, base_period):
     base = xm.sel(time=slice(f"{base_period[0]}-01-01", f"{base_period[1]}-12-31"))
     # check if base period is empty
     if base.sizes.get("time", 0) == 0:
-        print(
-            f"Base period {base_period[0]}–{base_period[1]} "
-            f"not found in dataset (time range {xm.time.min().values} to {xm.time.max().values}). "
-            "Skipping anomaly calculation and returning empty array."
+        logger.warning(
+            "Base period %s–%s not found in dataset (time range %s to %s). "
+            "Skipping anomaly calculation and returning empty array.",
+            base_period[0], base_period[1],
+            xm.time.min().values, xm.time.max().values,
         )
         return xr.full_like(xm, np.nan)
     clim = base.groupby("time.month").mean("time", skipna=True)
@@ -94,7 +98,7 @@ def variability_kde_timeseries(
       (a) KDE of monthly global-mean anomalies
       (b) Timeseries of those anomalies
 
-    Saves: <output_path>/variability/plots/<output_fname>.png
+    Saves: <output_path>/variability/plots/<output_fname>.pdf
     """
     if include_era5 and era5 is None:
         raise RuntimeError("ERA5 is required (set era5_path) when include_era5=True.")
@@ -111,10 +115,10 @@ def variability_kde_timeseries(
 
     # remove all-NaN case early
     if model_anom.isnull().all():
-        print(f"No valid anomalies for {label_model}, skipping plot.")
+        logger.warning("No valid anomalies for %s, skipping plot.", label_model)
         return
     if include_era5 and era5_anom is not None and era5_anom.isnull().all():
-        print("No valid anomalies for ERA5, skipping plot.")
+        logger.warning("No valid anomalies for ERA5, skipping plot.")
         return
 
     # optionally detrend
@@ -126,13 +130,13 @@ def variability_kde_timeseries(
     # remove NaNs for KDE
     model_vals = model_anom.dropna("time").values
     if model_vals.size == 0:
-        print("Model anomalies empty after NaN removal, skipping plot.")
+        logger.warning("Model anomalies empty after NaN removal, skipping plot.")
         return
 
     if era5_anom is not None:
         era5_vals = era5_anom.dropna("time").values
         if era5_vals.size == 0:
-            print("ERA5 anomalies empty after NaN removal, skipping plot.")
+            logger.warning("ERA5 anomalies empty after NaN removal, skipping plot.")
             return
     else:
         era5_vals = None
@@ -197,6 +201,6 @@ def plot_variability_kde_timeseries(
     # save figure
     output_dir = os.path.join(output_path, "variability", "plots")
     os.makedirs(output_dir, exist_ok=True)
-    output_file = os.path.join(output_dir, f"{output_fname}.png")
+    output_file = os.path.join(output_dir, f"{output_fname}.pdf")
     plt.savefig(output_file, dpi=300, bbox_inches="tight")
     plt.close(fig)

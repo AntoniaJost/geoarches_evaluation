@@ -1,0 +1,15 @@
+LatitudeProfile:
+  _target_: metrics.module.LatitudeProfile
+  temporal_selection: ["annual"]
+  # Per-variable latitude_band and longitude_band override the class defaults.
+  # latitude_band: [south, north]   longitude_band: [west, east]
+  # Omit a band key (or set to null) to use the full range on that axis.
+  variables:
+    - {name: "ua", pressure_level: 85000, latitude_band: [-80, -10]}
+    - {name: "ta", pressure_level: 85000, latitude_band: [-70, -30]}
+    - {name: "hus", pressure_level: 70000, latitude_band: [-30, 30]}
+  plotter_kwargs:
+    output_path: "LatitudeProfile"
+    figsize: [10, 8]
+    linewidth: 2.0
+    dpi: 300

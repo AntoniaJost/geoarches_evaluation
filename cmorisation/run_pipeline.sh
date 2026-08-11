@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=AWM-midx3-aimip-sst0k
+#SBATCH --job-name=AWGU-midx5-aimip-sst0k
 #SBATCH --time=08:00:00
 #SBATCH --partition=compute
 #SBATCH --account=bk1450
@@ -39,9 +39,9 @@ set -euo pipefail
 ### ----------------------------
 
 # IDEALLY, ALL YOU NEED TO TOUCH IS WITHIN THIS BLOCK. ADJUST ACCORDING TO YOUR DATA & STRUCTURE
-MODEL_TAG="ArchesWeather" # part of folder path of input data
-NAME="ArchesWeather" #"ArchesWeather", "ArchesWeatherGen"
-MEMBER="3" # typically 1 to 5
+MODEL_TAG="ArchesWeatherGenU" # part of folder path of input data
+NAME="ArchesWeatherGenU" #"ArchesWeather", "ArchesWeatherGen"
+MEMBER="5" # typically 1 to 5
 ENSEMBLE="r${MEMBER}i1p1f1"
 SCENARIO="0k"
 INIT_TIME="1978-10-01" # timespan of your input files

@@ -1,22 +1,58 @@
 AnnualCycle:
   _target_: metrics.module.SeasonalCycles
   variables:
-    - {"name": "tos", "pressure_level": null}
     - {"name": "tas", "pressure_level": null}
-    - {"name": "uas", "pressure_level": null}
-    - {"name": "hus", "pressure_level": 70000}
+    - {"name": "tos", "pressure_level": null}
+    #- {"name": "ua", "pressure_level": 850}
+    #- {"name": "va", "pressure_level": 850}
+    #- {"name": "psl", "pressure_level": null}
+    #- {"name": "uas", "pressure_level": null}
+    #- {"name": "hus", "pressure_level": 70000}
+    #- {"name": "zg", "pressure_level": 50000}
+    #- {"name": "zg", "pressure_level": 85000}
   mean_groups:
+    #- "time.dayofyear"
     - "time.year"
-    - "time.month"
-  baseline_mean_groups:
-    - "time.month"
+  baseline_mean_groups: Null
+    #- "time.month"
   detrend: False
   linear_trend: True
   compute_anomalies: False
   baseline_period: ["1981-01-01", "2010-12-31"]
-  plotter_kwargs:
-    output_path: "timeseries/annual_cycle"
-    figsize: [12, 8]  
-    linewidth: 1.0
+  # Optional spatial restriction before the global-mean is computed.
+  # A single band:   lat_band: [-30, 30]             (one evaluation pass)
+  # Multiple bands:  lat_band: [[-90, -30], [30, 90]] (one pass per band)
+  # Set to null (or omit) to use the full global average.
+  # Output is organised as: output_path / lat-lon / var
+  lat_band:
+    - Null
 
-    
+  lon_band: 
+    - Null
+
+  # Set to true to also compute and save the power spectral density of the
+  # annual cycle for each variable and spatial band.
+  compute_psd: False
+  # Optional season filter applied on top of the time range.
+  # A single season:    season: "JJA"
+  # Multiple seasons:   season: ["DJF", "JJA"]
+  # Adds a subdir  lat-lon / [time /] season / var  and appends the season
+  # label to the time-range annotation, e.g. "1979-01-01 - 2024-12-31 (JJA)".
+  # null = use all months.
+  season: Null
+  #  - "Annual" 
+
+  # Optional time-range restriction applied before computing the cycle.
+  # A single range:    time_range: ["1981-01-01", "2010-12-31"]
+  # Multiple ranges:   time_range: [["1981-01-01", "2000-12-31"],
+  #                                  ["2001-01-01", "2020-12-31"]]
+  # Each range creates a subdir  lat-lon / time_start_time_end / var
+  # and is shown in the bottom-right annotation box.  null = all years.
+  time_range: 
+    #- ["1979-01-01", "1984-12-31"] 
+    #- ["1979-01-01", "1989-12-31"] 
+    #- ["1979-01-01", "2014-12-31"] 
+    - ["1979-01-01", "2014-12-31"]
+  plotter_kwargs:
+    output_path: "timeseries/Trend"
+  

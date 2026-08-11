@@ -1,0 +1,16 @@
+CESM2-1-1-HR:
+  path_to_monthly_data: 
+    - "data/cesm2-1x1/amip/r1i1p1f1/Amon"
+    - "data/cesm2-1x1/amip/r4i1p1f1/Amon"
+    - "data/cesm2-1x1/amip/r5i1p1f1/Amon"
+    - "data/cesm2-1x1/amip/r6i1p1f1/Amon"
+    - "data/cesm2-1x1/amip/r7i1p1f1/Amon"
+    - "data/cesm2-1x1/amip/r8i1p1f1/Amon"
+    - "data/cesm2-1x1/amip/r9i1p1f1/Amon"
+    - "data/cesm2-1x1/amip/r10i1p1f1/Amon"
+  path_to_daily_data: Null
+  model_label: "CESM2"
+  color: "#4B0082"  # dark blueish purple
+  period: ["1979-01-01", "2014-12-31"]
+  is_reference: False
+  

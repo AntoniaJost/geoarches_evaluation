@@ -1,3 +1,8 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 def _compute_indian_monsoon_index(self, data, period, kinetic_energy=False):
     u850_1 = data.sel(longitude=slice(220, 260), latitude=slice(15, 5), level=850)[
         "u_component_of_wind"
@@ -31,6 +36,6 @@ def _compute_indian_monsoon_index(self, data, period, kinetic_energy=False):
 
         imd_index = imd_index.groupby("time.dayofyear").mean(dim=["time"])
 
-        print("imd_index: ", imd_index)
+        logger.debug("imd_index: %s", imd_index)
 
         return imd_index

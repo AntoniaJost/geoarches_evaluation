@@ -1,7 +1,9 @@
+import logging
 import xarray as xr
-
 import numpy as np
 from scipy import stats
+
+logger = logging.getLogger(__name__)
 
 
 def compute_spread_skill_ratio(forecast: xr.DataArray, observation: xr.DataArray) -> xr.DataArray:
@@ -58,7 +60,7 @@ def compute_regression_coefficients_2d(x, y):
     # shape of data1 and data2 should be (N,)
 
     if len(x) == 0 or len(y) == 0:
-        print("No valid data points for regression.")
+        logger.warning("No valid data points for regression.")
         return None
 
     slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)

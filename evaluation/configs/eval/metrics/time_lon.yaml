@@ -1,0 +1,13 @@
+TimeLongitudeMap:
+  _target_: metrics.module.TimeLongitudeMap
+  xdim: "lon"
+  ydim: "time"
+  # lat_band: [south_lat, north_lat] – latitude range averaged over before plotting.
+  # Use [-30, 30] for the tropics, [-90, 90] for the full globe.
+  lat_band: [-30, 30]
+  variables:
+    - {name: "tos", pressure_level: null}
+    - {name: "tas", pressure_level: null}
+    #- {name: "ua", pressure_level: 85000}
+  plotter_kwargs:
+    output_path: "TimeLongitudeMap"

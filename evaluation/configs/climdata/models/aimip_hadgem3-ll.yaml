@@ -1,15 +1,12 @@
 HadGEM3-GC31-LL:
   path_to_monthly_data: 
-    - "/pool/data/CMIP6/data/CMIP/MOHC/HadGEM3-GC31-LL/amip/r1i1p1f1/Amon"
-    - "/pool/data/CMIP6/data/CMIP/MOHC/HadGEM3-GC31-LL/amip/r2i1p1f1/Amon"
-    - "/pool/data/CMIP6/data/CMIP/MOHC/HadGEM3-GC31-LL/amip/r3i1p1f1/Amon"
-    - "/pool/data/CMIP6/data/CMIP/MOHC/HadGEM3-GC31-LL/amip/r4i1p1f1/Amon"
-  path_to_daily_data: 
-    - "/pool/data/CMIP6/data/CMIP/MOHC/HadGEM3-GC31-LL/amip/r1i1p1f1/day"
-    - "/pool/data/CMIP6/data/CMIP/MOHC/HadGEM3-GC31-LL/amip/r2i1p1f1/day"
-    - "/pool/data/CMIP6/data/CMIP/MOHC/HadGEM3-GC31-LL/amip/r3i1p1f1/day"
-    - "/pool/data/CMIP6/data/CMIP/MOHC/HadGEM3-GC31-LL/amip/r4i1p1f1/day"
-  model_label: "HadGEM3-GC31-LL"
-  color: [0.1, 0.7, 0.7]
+    - "data/hadgem3-gc31-ll-1x1/amip/r1i1p1f3/Amon"
+    - "data/hadgem3-gc31-ll-1x1/amip/r2i1p1f3/Amon"
+    - "data/hadgem3-gc31-ll-1x1/amip/r3i1p1f3/Amon"
+    - "data/hadgem3-gc31-ll-1x1/amip/r4i1p1f3/Amon"
+    - "data/hadgem3-gc31-ll-1x1/amip/r5i1p1f3/Amon"
+  path_to_daily_data: null
+  model_label: "HadGEM3"
+  color: "#F0E442"
   period: ["1979-01-01", "2014-12-31"]
   is_reference: False

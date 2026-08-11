@@ -11,12 +11,15 @@ BaseMetric
 """
 
 import itertools
+import logging
 import os
 
 import numpy as np
 import xarray as xr
 from scipy import stats
 from scipy.sparse.linalg import svds as _truncated_svds
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Temporal-selection helpers
@@ -83,9 +86,7 @@ def compute_anomaly(
         baseline_data = data
     else:
         baseline_data = data.sel(
-            time=(data.time.values >= np.datetime64(baseline_period[0], "ns"))
-            & (data.time.values <= np.datetime64(baseline_period[1], "ns")),
-            method="nearest",
+            time=slice(baseline_period[0], baseline_period[1]),
         )
 
     if baseline_mean_groups is None:
@@ -137,6 +138,11 @@ def compute_eof(data: xr.DataArray, n_modes: int = 1):
     """
     data = data.transpose("time", "lat", "lon", ...)
     x = data.values.reshape(data.values.shape[0], -1)  # (T, N)
+    # Replace remaining NaN with 0 so the SVD does not fail.  In an anomaly
+    # field, 0 means "no deviation from climatology" – a safe neutral value
+    # for grid points masked by orography (e.g. Antarctic surface above the
+    # pressure level).
+    np.nan_to_num(x, copy=False, nan=0.0)
     # scipy.sparse.linalg.svds returns singular values in *ascending* order
     # and requires k < min(T, N).
     if n_modes is None: 
@@ -157,10 +163,7 @@ def compute_eof(data: xr.DataArray, n_modes: int = 1):
         Vt_k = Vt_k[:n_modes, :]
 
     eof_modes = U_k[:, :n_modes].copy()
-    for i in range(n_modes):
-        mode = eof_modes[:, i]
-        if np.corrcoef(x[:, 0], mode)[0, 1] > 0:
-            eof_modes[:, i] = -mode
+ 
     return eof_modes, U_k, S_k, Vt_k
 
 
@@ -188,6 +191,7 @@ def compute_soi(data: xr.DataArray, base_period, detrend: bool = False) -> xr.Da
 
     soi = tahiti_anom - darwin_anom
     soi = soi / soi.std(dim="year")
+
     return soi
 
 
@@ -215,9 +219,9 @@ def _get_reference_container(data_containers):
 
 def _log_variable_info(name: str, pressure_level) -> None:
     if pressure_level is not None:
-        print(f"--> Processing variable: {name} at pressure level {pressure_level} Pa")
+        logger.info("--> Processing variable: %s at pressure level %s Pa", name, pressure_level)
     else:
-        print(f"--> Processing variable: {name}")
+        logger.info("--> Processing variable: %s", name)
 
 
 # ---------------------------------------------------------------------------
@@ -247,10 +251,20 @@ class BaseMetric:
         variables: list = None,
         frequency: str = "monthly",
         plotter_kwargs: dict = None,
+        per_member: bool = False,
     ) -> None:
+        """Initialize the base metric.
+
+        Args:
+            variables (list, optional): List of variable dicts ``{"name": str, "pressure_level": int}``. Defaults to None.
+            frequency (str, optional): Temporal resolution of the source data (``"monthly"`` or ``"daily"``). Defaults to "monthly".
+            plotter_kwargs (dict, optional): Passed verbatim to the plotter that the subclass constructs. Defaults to None.
+            per_member (bool, optional): Whether to compute metrics per ensemble member. Defaults to False.
+        """
         self.variables = list(variables) if variables else []
         self.frequency = frequency
         self.plotter_kwargs = dict(plotter_kwargs) if plotter_kwargs else {}
+        self.per_member = per_member
 
     # -- Interface -----------------------------------------------------------
 
@@ -273,6 +287,65 @@ class BaseMetric:
     def _log(self, name: str, pressure_level) -> None:
         _log_variable_info(name, pressure_level)
 
+    # -- NetCDF result caching -----------------------------------------------
+
+    def _nc_path(self, output_dir: str, stem: str) -> str:
+        """Return the canonical path for a cached NetCDF file.
+
+        The file is placed in *output_dir* and named ``{stem}.nc``, mirroring
+        the naming convention used for the corresponding PNG plot file.
+        """
+        return os.path.join(output_dir, f"{stem}.nc")
+
+    def _save_nc(
+        self,
+        data: xr.DataArray | xr.Dataset,
+        path: str,
+        attrs: dict = None,
+    ) -> None:
+        """Save *data* as a NetCDF file.
+
+        When *data* is a :class:`xr.DataArray` it is converted to a Dataset
+        under the variable name ``"data"`` before writing.  Scalar metrics
+        (e.g. RMSE, bias) can be passed in *attrs* and are stored as global
+        Dataset attributes so they survive the round-trip.
+        """
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        if isinstance(data, xr.DataArray):
+            ds = data.to_dataset(name="data")
+        elif isinstance(data, xr.Dataset):
+            ds = data.copy()
+        else:
+            raise TypeError(
+                f"_save_nc expects xr.DataArray or xr.Dataset, got {type(data)}"
+            )
+        if attrs:
+            ds.attrs.update({k: v for k, v in attrs.items() if v is not None})
+        ds.to_netcdf(path)
+        logger.debug("  [cache] saved → %s", path)
+
+    def _load_nc(self, path: str) -> xr.Dataset | None:
+        """Load a cached NetCDF file and return its Dataset.
+
+        Returns ``None`` when the file does not exist so callers can use a
+        simple ``if ds is None:`` guard.  The dataset is loaded with
+        ``decode_times=False`` when time coordinates are numeric to avoid
+        cftime/pandas compatibility issues on reload.
+        """
+        if not os.path.exists(path):
+            return None
+        logger.debug("  [cache] loading → %s", path)
+        try:
+            return xr.open_dataset(path)
+        except Exception:
+            # Corrupt or incompatible file – treat as a cache miss.
+            logger.warning("  [cache] failed to open %s – treating as cache miss", path)
+            return None
+
+    def _all_cached(self, paths: list[str]) -> bool:
+        """Return ``True`` only when **every** path in *paths* already exists."""
+        return bool(paths) and all(os.path.exists(p) for p in paths)
+
 
 class SpatialMetric(BaseMetric):
     """
@@ -289,9 +362,12 @@ class SpatialMetric(BaseMetric):
         ydim: str,
         temporal_selection: list = None,
         frequency: str = "monthly",
+        per_member: bool = False,
         plotter_kwargs: dict = None,
     ) -> None:
-        super().__init__(variables, frequency, plotter_kwargs)
+        super().__init__(
+            variables=variables, frequency=frequency, 
+            plotter_kwargs=plotter_kwargs, per_member=per_member)
         self.xdim = xdim
         self.ydim = ydim
         self.temporal_selection = temporal_selection or ["annual"]
@@ -329,8 +405,11 @@ class TimeseriesMetric(BaseMetric):
         baseline_period: tuple = None,
         baseline_mean_groups: list = None,
         plotter_kwargs: dict = None,
+        per_member: bool = False,
     ) -> None:
-        super().__init__(variables, frequency, plotter_kwargs)
+        super().__init__(
+            variables=variables, frequency=frequency, 
+            plotter_kwargs=plotter_kwargs, per_member=per_member)
 
         if compute_anomalies and baseline_period is None:
             raise ValueError("baseline_period is required when compute_anomalies=True.")
@@ -357,7 +436,10 @@ class TimeseriesMetric(BaseMetric):
 
     def xlabels_from_time(self, time: xr.DataArray):
         """Convert a time coordinate with year/month dims to string labels."""
-        if "month" in time.dims and "year" in time.dims:
+
+        if "dayofyear" in time.dims:
+            return time["dayofyear"].values
+        elif "month" in time.dims and "year" in time.dims:
             return [
                 f"{y}-{m:02d}"
                 for y, m in itertools.product(time["year"].values, time["month"].values)

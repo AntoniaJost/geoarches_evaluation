@@ -1,0 +1,9 @@
+GFDL-CM4-1X1:
+  path_to_monthly_data: 
+    - "data/gfdl-cm4-1x1/amip-p4k/r1i1p1f1/Amon"
+  path_to_daily_data: Null
+  model_label: "GFDL-CM4-1X1-p4K"
+  color: "#117733"  # dark green
+  period: ["1979-01-01", "2014-12-31"]
+  is_reference: False
+  

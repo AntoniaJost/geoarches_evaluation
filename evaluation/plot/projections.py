@@ -20,6 +20,7 @@ import os
 
 from plot.functional.spatial import (
     azimuthal_equidistant_projection_plot,
+    azimuthal_equidistant_multi_plot,
     lambert_conformal_projection_plot,
     imshow as _imshow,
     contourf as _contourf,
@@ -48,7 +49,7 @@ class CartopyProjectionPlotter:
     def __init__(
         self,
         output_path: str = ".",
-        figsize: tuple = (8, 8),
+        figsize: tuple = (10, 6),
         dpi: int = 150,
         cmap: str = "bwr",
     ) -> None:
@@ -72,9 +73,14 @@ class CartopyProjectionPlotter:
         central_latitude: float = 90,
         central_longitude: float = 0,
         extent: list = None,
-        fname: str = "azimuthal_equidistant.png",
+        fname: str = "azimuthal_equidistant.pdf",
         info_vals: dict = None,
         wedge: str = None,
+        title: str = None,
+        vmin: float = None,
+        vmax: float = None,
+        infotext_topleft: str = None,
+        cbar_label: str = None,
     ) -> None:
         """
         Azimuthal-equidistant projection plot.
@@ -97,6 +103,12 @@ class CartopyProjectionPlotter:
             Dict of key/value pairs printed below the plot axes.
         wedge:
             Optional overlay wedge shape (``"noa"`` or ``"europe"``).
+        vmin / vmax:
+            Symmetric colorbar bounds.  When supplied a :class:`CenteredNorm`
+            with ``halfrange=max(|vmin|, |vmax|)`` is used so all plots in a
+            comparison share identical colour scales.
+        infotext_topleft:
+            Text annotation placed at the top-left corner of the axes.
         """
         azimuthal_equidistant_projection_plot(
             data=data,
@@ -106,6 +118,52 @@ class CartopyProjectionPlotter:
             fpath=self._fpath(fname),
             info_vals=info_vals,
             wedge=wedge,
+            title=title,
+            vmin=vmin,
+            vmax=vmax,
+            infotext_topleft=infotext_topleft,
+            cbar_label=cbar_label,
+        )
+
+    def azimuthal_equidistant_multi(
+        self,
+        data_dict: dict,
+        *,
+        central_latitude: float = 90,
+        central_longitude: float = 0,
+        extent: list = None,
+        fname: str = "azimuthal_equidistant_multi.pdf",
+        vmin: float = None,
+        vmax: float = None,
+        cbar_label: str = None,
+        wedge: str = None,
+        info_vals_dict: dict = None,
+        ncols: int = 4,
+    ) -> None:
+        """Multi-panel azimuthal-equidistant plot with shared colorbar.
+
+        Parameters
+        ----------
+        data_dict:
+            ``{display_label: xr.DataArray}`` – one panel per entry.
+        fname:
+            Output filename relative to ``self.output_path``.
+        ncols:
+            Maximum columns in the subplot grid.
+        All other parameters mirror :meth:`azimuthal_equidistant`.
+        """
+        azimuthal_equidistant_multi_plot(
+            data_dict=data_dict,
+            central_latitude=central_latitude,
+            central_longitude=central_longitude,
+            extent=extent,
+            fpath=self._fpath(fname),
+            vmin=vmin,
+            vmax=vmax,
+            cbar_label=cbar_label,
+            wedge=wedge,
+            info_vals_dict=info_vals_dict,
+            ncols=ncols,
         )
 
     def lambert_conformal(
@@ -115,7 +173,7 @@ class CartopyProjectionPlotter:
         central_latitude: float = 55,
         central_longitude: float = 0,
         extent: list = None,
-        fname: str = "lambert_conformal.png",
+        fname: str = "lambert_conformal.pdf",
         info_vals: dict = None,
         levels=None,
         lat_cutoff: float = -30,
@@ -162,7 +220,7 @@ class CartopyProjectionPlotter:
         self,
         data,
         *,
-        fname: str = "robinson.png",
+        fname: str = "robinson.pdf",
         title: str = None,
         cbar_label: str = None,
         vmin: float = None,
@@ -192,6 +250,7 @@ class CartopyProjectionPlotter:
             cbar_label=cbar_label,
             cmap=cmap if cmap is not None else self.cmap,
             projection="Robinson",
+            figsize=self.figsize,
             vmin=vmin,
             vmax=vmax,
             norm=norm,
@@ -204,10 +263,11 @@ class CartopyProjectionPlotter:
         y,
         z,
         *,
-        fname: str = "plate_carree.png",
+        fname: str = "plate_carree.pdf",
         cbar_label: str = None,
         add_contourlines: bool = False,
         cmap: str = None,
+        extent: list = None,
         **kwargs,
     ) -> None:
         """
@@ -237,5 +297,7 @@ class CartopyProjectionPlotter:
             add_contourlines=add_contourlines,
             cbar_label=cbar_label,
             cmap=cmap if cmap is not None else self.cmap,
+            figsize=self.figsize,
+            extent=extent,
             **kwargs,
         )

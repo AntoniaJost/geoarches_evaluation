@@ -1,0 +1,9 @@
+CESM2-1-1-HR:
+  path_to_monthly_data: 
+    - "data/cesm2-1x1/amip-p4k/r1i1p1f1/Amon"
+  path_to_daily_data: Null
+  model_label: "CESM2-1-1-HR-p4K"
+  color: "#4B0082"  # dark blueish purple
+  period: ["1979-01-01", "2013-12-31"]
+  is_reference: False
+  

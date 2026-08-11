@@ -1,13 +1,21 @@
 defaults:
   - _self_
-  #- metrics/spectrum.yaml
-  - metrics/hist.yaml
-  - metrics/seasonal_means.yaml
-  - metrics/lat_time.yaml
-  - metrics/webster_yang.yaml
-  - metrics/seasonal_means.yaml
-  - metrics/annual_cycle.yaml
-  - metrics/nam.yaml
-  - metrics/nao.yaml
+  #- metrics/sam.yaml
+  #- metrics/nam.yaml
+  #- metrics/quantitative_baseline.yaml
+  #- metrics/variable_correlations.yaml
+  #- metrics/annual_cycle.yaml
+  #- metrics/latitudinal.yaml
+  #- metrics/bias_maps.yaml
+  #- metrics/seasonal_means.yaml
+  #- metrics/pressure_lat_bias.yaml
   - metrics/soi.yaml
-  - metrics/tropical_cyclones.yaml
+  #- metrics/seasonal_trend.yaml
+  #- metrics/pressure_lat.yaml
+  #- metrics/time_lon.yaml
+  #- metrics/hist.yaml
+  #- metrics/spectrum.yaml
+  #- metrics/lat_time.yaml
+  #- metrics/nam.yaml
+  #- metrics/sam.yaml
+  #- metrics/webster_yang.yaml
