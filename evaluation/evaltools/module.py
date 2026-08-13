@@ -1,8 +1,35 @@
 from omegaconf import OmegaConf
+import logging
 import xarray as xr
+import cftime
 from glob import glob
 from hydra.utils import instantiate
 import numpy as np
+
+logger = logging.getLogger(__name__)
+
+
+def _clamp_date_for_360day(date_str: str) -> str:
+    """Clamp a date string so the day component never exceeds 30.
+
+    In 360-day calendars every month has exactly 30 days, so dates
+    like ``"2014-12-31"`` are invalid.  This helper rewrites the day
+    to 30 when necessary, leaving dates with day <= 30 unchanged.
+    """
+    parts = date_str.split("-")
+    if len(parts) == 3:
+        year, month, day = parts
+        if int(day) > 30:
+            date_str = f"{year}-{month}-30"
+    return date_str
+
+
+def _uses_360day_calendar(ds: xr.Dataset) -> bool:
+    """Return True if *ds* uses a 360-day calendar (e.g. HadGEM)."""
+    if "time" not in ds.dims:
+        return False
+    sample = ds["time"].values.flat[0]
+    return isinstance(sample, cftime.Datetime360Day)
 
 # ---------------------------------------------------------------------------
 # Dask chunk sizes per temporal frequency.
@@ -22,7 +49,7 @@ def _normalize_path(path):
 
 
 class GeoClimate:
-    def __init__(self, data, metric_cfgs, output_path="."):
+    def __init__(self, data, metric_cfgs, restrict_to_time_range=None, output_path="."):
         """
         Initializes the GeoClimate evaluation module with data containers and metrics.
         Parameters:
@@ -31,6 +58,7 @@ class GeoClimate:
         """
 
         self.output_path = output_path
+        self.restrict_to_time_range = restrict_to_time_range
         self._init_data(data["models"])
         self._init_metrics(metric_cfgs=metric_cfgs)
 
@@ -38,9 +66,9 @@ class GeoClimate:
     def _init_data(self, data):
         self.data_containers = []
         for d_name, v in data.items():
-
-            print("Adding data for:", d_name)
-        
+            logger.info("Adding data container: %s", d_name)
+            if self.restrict_to_time_range is not None:
+                v["period"] = self.restrict_to_time_range
             container = CMORDataContainer(**v)
 
             self.data_containers.append(container)
@@ -50,7 +78,7 @@ class GeoClimate:
 
         metric_cfgs = metric_cfgs["metrics"]
         for metric_name, metric_cfg in metric_cfgs.items():
-            print("Adding metric:", metric_name)
+            logger.info("Adding metric: %s", metric_name)
 
             # preprend global output path to metric output path
             metric_cfg["plotter_kwargs"]["output_path"] = \
@@ -64,12 +92,12 @@ class GeoClimate:
         if target_metrics is None:
             metrics = self.metric_objects
         else:
-            print(target_metrics)
-            print(self.metric_objects.keys())
+            logger.info("Target metrics: %s", target_metrics)
+            logger.info("Available metrics: %s", list(self.metric_objects.keys()))
             metrics = {m: self.metric_objects[m] for m in target_metrics}
 
         for metric in metrics.values():
-            print(f"Evaluating {metric.__class__.__name__}")
+            logger.info("Evaluating %s", metric.__class__.__name__)
             metric.evaluate(self.data_containers)
 
 
@@ -80,11 +108,12 @@ class CMORDataContainer:
             "psl": "Sea Level Pressure",
             "ta": "Air Temperature",
             "tas": "Surface Air Temperature",
-            "tos": "Sea Surface Temperature",
+            "tos": "Surface Temperature",
             "ua": "Eastward Wind",
             "uas": "Eastward Near Surface Wind",
             "vas": "Northward Near Surface Wind",
             "va": "Northward Wind",
+            "uv": "Wind Speed",
             "zg": "Geopotential Height",
             "siconc": "Sea Ice Cover",
             "wap": "Vertical Velocity",
@@ -104,8 +133,7 @@ class CMORDataContainer:
             _type_: _description_
         """
 
-        print("#" * 72)
-        print("Initializing CmorDataContainer for ", model_label)
+        logger.info("Initializing CMORDataContainer for %s", model_label)
         assert path_to_monthly_data is not None or path_to_daily_data is not None, \
         "At least one of path_to_monthly_data or path_to_daily_data must be provided."
 
@@ -137,8 +165,7 @@ class CMORDataContainer:
         self.model_label = model_label
         self.model_color = color
 
-        print("Initialized CmorDataContainer for ", self.model_label)
-        print("#" * 72)
+        logger.info("Initialized CMORDataContainer for %s", self.model_label)
 
     def load_data(self, path, var_name, frequency="monthly", all_members=False):
         """
@@ -160,17 +187,17 @@ class CMORDataContainer:
         else:
             fpaths.append(glob(path + f"/{var_name}/" + "/**/*.nc", recursive=True))
 
-  
-        if not fpaths:
-            print(f"!!! No files found for variable {var_name} in path {path}/{var_name}/")
+
+        if len(fpaths) == 0:
+            logger.warning("No files found for variable %s in path %s/%s/", var_name, path, var_name)
             return None
 
         chunks = _CHUNK_SIZES.get(frequency, {"time": 120})
-        print(f"... {var_name}: {len(fpaths)} file(s), chunks={chunks} ...", end=" ")
 
         # Open each file lazily with dask chunks.
         # Each file is one ensemble member; open_mfdataset handles multi-file
         # members internally via combine="by_coords".
+ 
         member_datasets = [
             xr.open_mfdataset(f, combine="by_coords", chunks=chunks)
             for f in fpaths
@@ -182,7 +209,7 @@ class CMORDataContainer:
             if var_name == "tos":
                 var[var_name] = var[var_name] + 273.15
             # These reductions stay lazy (dask graph nodes).
-            if not all_members:
+            if all_members == False:
                 var_mean = var.mean("member")
                 var_std  = var.std("member")
                 var = xr.concat([var_mean, var_std], dim="stat").assign_coords(
@@ -193,12 +220,24 @@ class CMORDataContainer:
             if var_name == "tos":
                 var[var_name] = var[var_name] + 273.15
 
+        if var_name == "hus":
+            var[var_name] = var[var_name].clip(min=0)
+
         # Period selection and longitude roll are both lazy operations.
         if self.period is not None:
-            var = var.sel(time=slice(self.period[0], self.period[1]))
-
-            #if "MPI-ESM" in self.model_label:
-            #    print(var[var_name].values)
+            p_start, p_end = self.period[0], self.period[1]
+            # HadGEM (and other models) may use a 360-day calendar where
+            # every month has exactly 30 days.  Dates with day > 30 (e.g.
+            # "2014-12-31") are invalid in that calendar and would cause a
+            # ValueError.  Clamp the period boundaries when needed.
+            if _uses_360day_calendar(var):
+                p_start = _clamp_date_for_360day(p_start)
+                p_end   = _clamp_date_for_360day(p_end)
+                logger.info(
+                    "360-day calendar detected for %s – clamped period to "
+                    "[%s, %s].", self.model_label, p_start, p_end,
+                )
+            var = var.sel(time=slice(p_start, p_end))
         if self.roll_longitude:
             var = var.roll(lon=-len(var.lon) // 2, roll_coords=False)
 
@@ -210,9 +249,14 @@ class CMORDataContainer:
         # I.e. interpolate lat and lon to self.nlat x self.nlon grid.  
         # This ensures that all variables are on the same grid, which is important for some metrics.
         # This is a no-op if the data is already on the target grid.
-        var = self._interpolate_to_target_grid(var) 
+        #if "mpi" in self.model_label.lower():
+        #    var = self._interpolate_to_target_grid(var) 
 
-        print("Done (lazy)")
+        if "mpi" in self.model_label.lower() and var_name == "zg":
+            # multiply by 9.81 to convert from geopotential to geopotential height 
+            var[var_name] = var[var_name] * 9.81
+
+        logger.debug("Done lazy loading '%s'.", var_name)
         return var
 
     def _interpolate_to_target_grid(self, ds):
@@ -253,6 +297,36 @@ class CMORDataContainer:
         ds = self.load_data(path, var_name, frequency=frequency, all_members=all_members)
         return ds
 
+    def _compute_wind_speed(self, path, frequency, pressure_level, all_members):
+        """Load u/v components and return a Dataset with a ``uv`` wind-speed variable.
+
+        When *pressure_level* is ``None`` the surface components ``uas`` / ``vas``
+        are used.  Otherwise ``ua`` / ``va`` are loaded and the requested pressure
+        level is selected before computing the speed.
+        """
+        if pressure_level is not None:
+            u_var, v_var = "ua", "va"
+        else:
+            u_var, v_var = "uas", "vas"
+
+        u_ds = self.load_data(path, u_var, frequency=frequency, all_members=all_members)
+        v_ds = self.load_data(path, v_var, frequency=frequency, all_members=all_members)
+
+        if u_ds is None or v_ds is None:
+            return None
+
+        u_da = u_ds[u_var]
+        v_da = v_ds[v_var]
+
+        if pressure_level is not None:
+            if "plev" in u_da.dims:
+                u_da = u_da.sel(plev=pressure_level, method="nearest")
+            if "plev" in v_da.dims:
+                v_da = v_da.sel(plev=pressure_level, method="nearest")
+
+        wind_speed = np.sqrt(u_da ** 2 + v_da ** 2)
+        return xr.Dataset({"uv": wind_speed})
+
     def preload_all(self, frequency="monthly"):
         """
         Eagerly preload all known variables for *frequency*.
@@ -263,10 +337,10 @@ class CMORDataContainer:
         """
         path = self.path_to_monthly_data if frequency == "monthly" else self.path_to_daily_data
         assert path is not None, f"No {frequency} data path configured."
-        print(f"--> Pre-loading all {frequency} variables from: {path}")
+        logger.info("Pre-loading all %s variables from: %s", frequency, path)
         for var_short in self.variable_names:
             self.get_variable_data(var_short, frequency=frequency)
-        print(f"--> Finished pre-loading {frequency} data.")
+        logger.info("Finished pre-loading %s data.", frequency)
 
     # Keep old method names for backward compatibility.
     def load_monthly_data(self):
@@ -277,10 +351,38 @@ class CMORDataContainer:
         """Pre-load all daily variables (optional - variables load lazily by default)."""
         self.preload_all("daily")
 
+    def has_variable(self, name, frequency="monthly", pressure_level=None):
+        """
+        Return True if *name* is available for *frequency*.
 
+        Checks for the presence of *name* in the appropriate cache, loading it
+        lazily if not already loaded.  If *pressure_level* is given, also checks
+        that the variable has a level near that pressure.
+
+        Parameters
+        ----------
+        name : str
+            CMOR short name of the variable (e.g. ``"tas"``, ``"ua"``).
+        frequency : str
+            ``"monthly"`` or ``"daily"``.
+        pressure_level : int or None
+            If given, select this pressure level from the ``plev`` dimension.
+
+        Returns
+        -------
+        bool
+        """
+        try:
+            _ = self.get_variable_data(name, frequency=frequency, pressure_level=pressure_level)
+            return True
+        except (KeyError, ValueError):
+            return False
+        
     def get_variable_data(
             self, name, pressure_level=None, 
-            frequency="monthly", all_members=False
+            frequency="monthly", 
+            all_members=False, 
+            time_slice=None
     ):
         """
         Return a (dask-backed, lazy) DataArray for *name* at the given frequency.
@@ -288,6 +390,12 @@ class CMORDataContainer:
         The variable is loaded from disk on the **first** call and cached for
         subsequent calls.  No data is computed until an explicit ``.values`` or
         ``.compute()`` is triggered by a metric.
+
+        When *pressure_level* is given the level selection is applied before
+        caching, so the dask graph for all downstream operations only covers
+        the requested 2-D (lat × lon × time) slice rather than the full 3-D
+        (lat × lon × plev × time) array.  This avoids unnecessary I/O and
+        computation when only a single level is needed.
 
         Parameters
         ----------
@@ -297,6 +405,10 @@ class CMORDataContainer:
             If given, select this pressure level from the ``plev`` dimension.
         frequency : str
             ``"monthly"`` or ``"daily"``.
+        all_members : bool
+            If True, load all ensemble members.
+        time_slice : slice or None
+            If given, select a subset of the time dimension.
 
         Returns
         -------
@@ -316,20 +428,54 @@ class CMORDataContainer:
                 f"No {frequency} data path configured for {self.model_label}."
             )
 
-        # Load and cache lazily on first access.
-        if name not in cache:
-            cache[name] = self._load_single_variable(path, name, frequency, all_members=all_members)
+        # Use a level-specific cache key so that the level selection is baked
+        # into the cached dask graph – downstream ops never see unused levels.
+        cache_key = (name, pressure_level) if pressure_level is not None else name
 
-        data = cache[name]
+        # Wind speed is derived from u/v components rather than a direct file.
+        if name == "uv":
+            if cache_key not in cache:
+                cache[cache_key] = self._compute_wind_speed(
+                    path, frequency, pressure_level, all_members
+                )
+            data = cache[cache_key]
+            if data is None:
+                raise KeyError(
+                    f"Variable 'uv' (wind speed) not found – ua/uas or va/vas "
+                    f"missing under {frequency} path for {self.model_label}."
+                )
+            if time_slice is not None:
+                data = data.sel(time=time_slice)
+            return data["uv"]
+
+        if cache_key not in cache:
+            # Load the full variable once (cached under plain name) and reuse
+            # it for all level-specific selections of the same variable.
+            if name not in cache:
+                cache[name] = self._load_single_variable(
+                    path, name, frequency, all_members=all_members)
+
+            full_ds = cache[name]
+
+            if pressure_level is not None and full_ds is not None:
+                if "plev" in full_ds[name].dims:
+                    # Select the level lazily; only this slice enters the graph.
+                    cache[cache_key] = full_ds.sel(plev=pressure_level, method="nearest")
+                else:
+                    cache[cache_key] = full_ds
+            else:
+                cache[cache_key] = full_ds
+
+        data = cache[cache_key]
         if data is None:
             raise KeyError(
                 f"Variable '{name}' not found under {frequency} path for "
                 f"{self.model_label}."
             )
 
-        if pressure_level is not None:
-            data = data.sel(plev=pressure_level, method="nearest")
-
+        if time_slice is not None:
+            data = data.sel(time=time_slice)
+        
         return data[name]
 
 

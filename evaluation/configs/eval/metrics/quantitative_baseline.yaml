@@ -1,0 +1,61 @@
+QuantitativeBaseline:
+  _target_: metrics.module.QuantitativeBaseline
+  # Model labels whose scores are averaged for the multi-model baseline.
+  baseline_models:
+    - "CESM2-1-1-HR"
+    - "GFDL-CM4-1X1"
+    - "HadGEM3-GC31-LL"
+    - "MPI-ESM1-2-HR"
+  # Scores to compute for every map source.
+  scores: ["rmse", "pattern_correlation", "bias"]
+  # Each entry points to NetCDF maps produced by an upstream metric.
+  # {model_label} is substituted with each model's label at runtime.
+  map_sources:
+    # --- Seasonal means (from XYMaps / SeasonalMeans) ---
+    #- name: "Surface Air Temperature"
+    #  path_template: "SeasonalMeans/annual/tas/{model_label}_tas.nc"
+    #  lat_weighted: true
+    #- name: "Air Temperature (850 hPa)"
+    #  path_template: "SeasonalMeans/annual/ta_85000Pa/{model_label}_ta_85000Pa.nc"
+    #  lat_weighted: true
+    #- name: "Sea Level Pressure"
+    #  path_template: "SeasonalMeans/annual/psl/{model_label}_psl.nc"
+    #  lat_weighted: true
+    #- name: "Eastward Wind (850 hPa)"
+    #  path_template: "SeasonalMeans/annual/ua_85000Pa/{model_label}_ua_85000Pa.nc"
+    #  lat_weighted: true
+    #- name: "Geopotential Height (500 hPa)"
+    #  path_template: "SeasonalMeans/annual/zg_50000Pa/{model_label}_zg_50000Pa.nc"
+    #  lat_weighted: true
+    #- name: "Specific Humidity (700 hPa)"
+    #  path_template: "SeasonalMeans/annual/hus_70000Pa/{model_label}_hus_70000Pa.nc"
+    #  lat_weighted: true
+    #- name: "Northward Wind (850 hPa)"
+    #  path_template: "SeasonalMeans/annual/va_85000Pa/{model_label}_va_85000Pa.nc"
+    #  lat_weighted: true
+    #- name: "psl_annual"
+    #  path_template: "1979-2014/BiasMaps/annual/psl/{model_label}_psl.nc"
+    #  lat_weighted: true
+    #- name: "psl_annual"
+    #  path_template: "1979-2014/BiasMaps/annual/psl/{model_label}_psl.nc"
+    #  lat_weighted: true
+    #- name: "ua_85000Pa_annual"
+    #  path_template: "SeasonalMeans/annual/ua_85000Pa/{model_label}_ua_85000Pa.nc"
+    #  lat_weighted: true
+    #- name: "zg_50000Pa_annual"
+    #  path_template: "SeasonalMeans/annual/zg_50000Pa/{model_label}_zg_50000Pa.nc"
+    #  lat_weighted: true
+    # --- EOF projections (from AnnularModes / NAM) ---
+    - name: "NAM_EOF"
+      path_template: "NAM/{model_label}/EOF_{model_label}_projection.nc"
+      lat_weighted: true
+    - name: "SAM_EOF"
+      path_template: "SAM/{model_label}/EOF_{model_label}_projection.nc"
+      lat_weighted: true
+    # --- SOI SST regression maps ---
+    #- name: "SOI_SST_regression"
+    #  path_template: "soi/{model_label}/SOI_SST_regression_{model_label}.nc"
+    #  variable: "regression"
+    #  lat_weighted: true
+  plotter_kwargs:
+    output_path: "QuantitativeBaseline"

@@ -8,12 +8,18 @@ Currently provides:
 """
 
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
+import matplotlib as mpl
 from matplotlib.projections.polar import PolarAxes
 import mpl_toolkits.axisartist.floating_axes as floating_axes
 import mpl_toolkits.axisartist.grid_finder as grid_finder
 
+mpl.rcParams["mathtext.fontset"] = "dejavusans"
+mpl.rcParams["font.family"] = "DejaVu Sans"  # for non-math text, e.g. axis labels and legends
+mpl.rcParams["axes.titlesize"] = 8
+mpl.rcParams["axes.labelsize"] = 7
+mpl.rcParams["xtick.labelsize"] = 7
+mpl.rcParams["ytick.labelsize"] = 7
+mpl.rcParams["legend.fontsize"] = 6
 
 # ---------------------------------------------------------------------------
 # Taylor diagram
@@ -126,7 +132,7 @@ def taylor_diagram_to_ax(
     ax, aux_ax = _make_taylor_axes(fig, rect=rect, r_max=r_max)
 
     if title:
-        ax.set_title(title, pad=12)
+        ax.set_title(title, pad=12, fontsize=mpl.rcParams["axes.titlesize"])
 
     # -- Reference point (r=1, σ_norm=1) ------------------------------------
     aux_ax.plot(
@@ -169,7 +175,7 @@ def taylor_diagram_to_ax(
             aux_ax.text(
                 theta2[idx], r2[idx],
                 f"{E:.2f}",
-                fontsize=7, color="green", alpha=0.7,
+                fontsize=mpl.rcParams["legend.fontsize"], color="green", alpha=0.7,
                 ha="left", va="bottom",
             )
 
@@ -208,17 +214,6 @@ def taylor_diagram_to_ax(
             zorder=5,
         )
         # Annotate centred RMSE next to each point
-        crmse = np.sqrt(1.0 + std_norm ** 2 - 2.0 * std_norm * r)
-
-        # Add some padding to the annotation position to avoid overlap with the marker
-        aux_ax.annotate(
-            f"  E={crmse:.2f}",
-            xy=(theta, std_norm),
-            fontsize=7,
-            color=color,
-            va="bottom",
-            ha="left",
-            
-        )
+        np.sqrt(1.0 + std_norm ** 2 - 2.0 * std_norm * r)
 
     return ax, aux_ax

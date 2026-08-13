@@ -1,21 +1,36 @@
 Histogram: 
   _target_: metrics.module.Histogram
+  # Optional spatial restriction applied before sampling values.
+  # A single band:        lat_band: [-30, 30]   (one evaluation pass)
+  # Multiple bands:       lat_band: [[-90, -30], [-30, 30], [30, 90]]  (one pass per band)
+  # lon_band works the same way: lon_band: [0, 180]  or  lon_band: [[-180,0],[0,180]]
+  # Set to null (or omit) to use the full global grid.
+  # Output is organised as: output_path / time-range / lat-lon / var
+  lat_band: 
+    - null 
+    #- [-30, 30]   # e.g. [Null, [-30, 30]]  or  [[-30, 30], [30, 60]]
+  lon_band: 
+    - null 
+    #- [-180, 180]   # e.g. [Null, [0, 360]]   or  [[-180, 0], [0, 180]]
   time: 
-    #- ["1978-10-01", "1978-10-03"]
+    #- ["1978-10-03", "1978-10-03"]
     #- ["1978-10-07", "1978-10-07"]
     #- ["1979-01-01", "1979-01-01"]
-    #- ["1979-01-01", "1979-12-31"]
-    - ["1979-01-01", "2014-12-31"]
+    #- ["2005-01-01", "2014-12-31"]
   frequency: "daily"
   variables: 
+    - ["tas", 85000]
+    - ["uv", 85000]
     - ["hus", 70000]
-    - ["hus", 85000]
     - ["zg", 50000]
-    - ["uas", null]
-    - ["vas", null]
-    - ["ua", 85000]
-    - ["va", 85000]
-    - ["ta", 85000]
+
+    #- ["hus", 85000]
+    #- ["uas", null]
+    #- ["vas", null]
+    #- ["va", 85000]
+    #- ["ta", 85000]
   plotter_kwargs:
     output_path: "histogram"
-    linewidth: 1.0
+    linewidth: 2.0
+    figsize: [6.7, 6]
+    dpi: 300

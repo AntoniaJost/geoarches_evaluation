@@ -14,7 +14,7 @@
 . ~/.bashrc
 lenv  # activate weather env
 
-
+HYDRA_FULL_ERROR=1
 ########## CONFIG PARAMS ##########
 srun --cpu-bind=none --mem-bind=none --mem=0  --cpus-per-task=8 python3 eval.py
 

@@ -1,10 +1,14 @@
 NorthernAnnularMode:
   _target_: metrics.module.NorthernAnnularMode
-  var: "zg"
-  time: ["November", "December", "January", "February"]
+  var: "psl"
+  time: ["December", "January", "February"]
   method: "EOF"
-  frequency: "daily"
+  frequency: "monthly"
   latitude_bands: [20, 90]
   longitude_bands: Null
+  per_member: True
+  weight_by_latitude: True
   plotter_kwargs:
     output_path: "NAM"
+    dpi: 300
+    figsize: [6.7, 3.]

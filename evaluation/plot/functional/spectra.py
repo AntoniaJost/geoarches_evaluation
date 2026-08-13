@@ -23,9 +23,7 @@ def radial_spectrum_to_ax(
     label: str,
     color: str,
     linestyle: str = "-",
-    marker=None,
     linewidth: float = 2.0,
-    markevery: int = 20,
 ) -> None:
     """Draw a single radial (spherical-harmonic) spectrum curve onto *ax*.
 
@@ -40,28 +38,29 @@ def radial_spectrum_to_ax(
     ax.loglog(
         frequency, spectrum,
         linewidth=linewidth, color=color, label=label,
-        linestyle=linestyle, marker=marker,
-        markevery=markevery if marker is not None else None,
+        linestyle=linestyle,
     )
-    ax.invert_xaxis()
-    ax.set_xlabel("Frequency (1/km)")
-    ax.grid(which="both", linestyle="-.", linewidth=0.2)
+    ax.grid(which="both", linestyle="-.", linewidth=0.5)
 
 
 def psd_to_ax(
     ax,
     frequencies: np.ndarray,
     psd: np.ndarray,
+    semilog: bool,
     label: str,
     color: str,
     linestyle: str = "-",
     linewidth: float = 2.0,
 ) -> None:
     """Draw a single Welch / arbitrary PSD curve onto *ax* (semi-log y)."""
-    ax.semilogy(frequencies, psd, linewidth=linewidth, color=color,
+    if semilog:
+        ax.semilogy(frequencies, psd, linewidth=linewidth, color=color,
+                    label=label, linestyle=linestyle)
+    else:
+        ax.plot(frequencies, psd, linewidth=linewidth, color=color,
                 label=label, linestyle=linestyle)
-    ax.set_xlabel("Frequency")
-    ax.grid(which="both", linestyle="-.", linewidth=0.2)
+    ax.grid(which="both", linestyle="-.", linewidth=0.5)
 
 
 # ---------------------------------------------------------------------------

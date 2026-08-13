@@ -1,6 +1,5 @@
 import hydra
 from evaltools.module import GeoClimate
-from pprint import pprint as pp
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
@@ -14,7 +13,11 @@ def main(cfg):
 
     # Load the data
 
-    evaluator = GeoClimate(data=cfg["climdata"], metric_cfgs=cfg["eval"], output_path=cfg["output_path"])
+    evaluator = GeoClimate(
+        data=cfg["climdata"], 
+        metric_cfgs=cfg["eval"], 
+        output_path=cfg["output_path"], 
+        **cfg["generic"])
     evaluator.evaluate(cfg["target_metrics"] if "target_metrics" in cfg else None)
 
 

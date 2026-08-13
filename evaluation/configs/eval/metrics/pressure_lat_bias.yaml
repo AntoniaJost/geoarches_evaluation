@@ -1,0 +1,18 @@
+PressureLatBiasMap:
+  _target_: metrics.module.PressureLatBiasMap
+  xdim: "lat"
+  ydim: "plev"
+  stack_models_in_rows: true
+  temporal_selection: ["annual", "DJF", "JJA"]
+  levels: null
+  # pressure_level in each variable entry is ignored – the full vertical
+  # profile is always fetched.  Only list pressure-level variables here.
+  variables:
+    - {name: "ta",  pressure_level: null}
+    #- {name: "ua",  pressure_level: null}
+    #- {name: "va",  pressure_level: null}
+    #- {name: "hus", pressure_level: null}
+    #- {name: "zg",  pressure_level: null}
+  plotter_kwargs:
+    output_path: "PressureLatBiasMap"
+    figsize: [8, 10]

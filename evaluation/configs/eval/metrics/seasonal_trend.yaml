@@ -1,0 +1,17 @@
+SeasonalTrend:
+  _target_: metrics.module.XYTrendMaps
+  xdim: "lon"
+  ydim: "lat"
+  temporal_selection: ["annual"]
+  variables: 
+    - {name: "tos", pressure_level: null}
+    - {name: "tas", pressure_level: null} 
+    - {name: "uas", pressure_level: null}
+    - {name: "hus", pressure_level: 70000}
+    - {name: "zg", pressure_level: 50000}
+    - {name: "ta", pressure_level: 85000}
+    - {name: "ua", pressure_level: 85000}
+    - {name: "va", pressure_level: 85000}
+    - {name: "hus", pressure_level: 85000}
+  plotter_kwargs:
+    output_path: "SeasonalTrend"

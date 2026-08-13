@@ -1,0 +1,12 @@
+SouthernAnnularMode:
+  _target_: metrics.module.SouthernAnnularMode
+  time: ["November", "December", "January", "February"]
+  method: "EOF"
+  frequency: "monthly"
+  latitude_bands: [-90, -20]
+  longitude_bands: Null
+  per_member: True
+  plotter_kwargs:
+    output_path: "SAM"
+    figsize: [6.7, 3.]
+    dpi: 300

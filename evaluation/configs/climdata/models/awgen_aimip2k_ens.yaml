@@ -11,7 +11,7 @@
     - "/work/bk1450/a270220/cmorised_awm/forced_sst_2K/member3/Amon"
     - "/work/bk1450/a270220/cmorised_awm/forced_sst_2K/member4/Amon"
     - "/work/bk1450/a270220/cmorised_awm/forced_sst_2K/member5/Amon"
-  model_label: "AWGen Ensemble (SST=2K)"
-  color: [0.8, 0.0, 0.4]  # some blue color
-  period: ["1979-01-01", "2024-12-31"]
+  model_label: "AWGen-p2K"
+  color: "#E69F00"  # some orange color
+  period: null # ["1979-01-01", "2024-12-31"]
   is_reference: False

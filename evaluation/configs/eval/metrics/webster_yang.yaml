@@ -3,7 +3,26 @@ WebsterYangIndex:
   method: "webster_yang"
   frequency: "daily"
   baseline_period: ["1981", "2014"]
-  target_year: 2024
+  target_year: 2014
+  # ── Wind vector fields (optional) ─────────────────────────────────────────
+  # Each entry defines one pressure level and a list of seasons.
+  # The region defaults to the South-Asian monsoon box [40, 110, -10, 40].
+  wind_vector_fields:
+    - pressure_level: 85000   # 850 hPa
+      quiver_stride: 3        # sub-sample every N grid points for arrow clarity
+      region: [40, 110, -10, 40]   # [lon_min, lon_max, lat_min, lat_max]
+      seasons:
+        - label: "JJA"
+          months: ["June", "July", "August"]
+        - label: "MAM"
+          months: ["March", "April", "May"]
+    - pressure_level: 20000   # 200 hPa
+      quiver_stride: 4
+      region: [40, 110, -10, 40]
+      seasons:
+        - label: "JJA"
+          months: ["June", "July", "August"]
   plotter_kwargs:
     output_path: "MonsoonIndex"
-    figsize: [10, 8]
+    figsize: [6.7, 4]
+    dpi: 300

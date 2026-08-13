@@ -1,0 +1,45 @@
+VariableCorrelationMaps:
+  _target_: metrics.module.VariableCorrelationMaps
+  xdim: "lon"
+  ydim: "lat"
+  # temporal_selection: "annual" keeps all months; season codes filter to those months.
+  temporal_selection: ["annual"]
+  # When true, var2 of each model is correlated against var1 of the reference
+  # model (e.g. ERA5 forcing vs model response). The reference label is shown
+  # in the top-right annotation box.
+  correlate_against_reference_var1: false
+  # When true, a separate correlation map is produced for each ensemble member
+  # plus a member-mean map. Maps land in output_path/ts/pair_str/{model_label}/.
+  per_member: True
+  # Optional time selection.  Use a single range or a list of ranges.
+  # Single range:   time_range: ["2000-01-01", "2020-12-31"]
+  # Multiple ranges: time_range: [["1980-01-01", "1999-12-31"],
+  #                                ["2000-01-01", "2019-12-31"]]
+  # Each range creates a subdir  pair_str/{start}_{end}/  and is shown in
+  # the top-right annotation box.  null means use all available years.
+  time_range: 
+   - ["1979-01-01", "1984-12-31"]
+   - ["1979-01-01", "1989-12-31"]
+   - ["1979-01-01", "1994-12-31"]
+   - ["1979-01-01", "1999-12-31"]
+   - ["1979-01-01", "2004-12-31"]
+   - ["1979-01-01", "2009-12-31"]
+   - ["1979-01-01", "2014-12-31"]
+  frequency: "monthly"
+  # Each pair is [var1_spec, var2_spec].  var1 is the "forcing" / first variable
+  # and var2 is the "response" / second variable.
+  variable_pairs:
+   - [{name: "tos",  pressure_level: null},
+      {name: "tas",  pressure_level: null}]
+   - [{name: "tas",  pressure_level: null},
+       {name: "psl",  pressure_level: null}]
+   - [{name: "tos",  pressure_level: null},
+       {name: "psl",  pressure_level: null}]
+
+    #- [{name: "ua",   pressure_level: 85000},
+    #   {name: "zg",   pressure_level: 50000}]
+    #- [{name: "hus",  pressure_level: 85000},
+    #   {name: "ta",   pressure_level: 85000}]
+  plotter_kwargs:
+    output_path: "VariableCorrelations"
+    figsize: [10, 6]
