@@ -9,8 +9,6 @@ Currently provides:
 
 import numpy as np
 import matplotlib as mpl
-import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
 from matplotlib.projections.polar import PolarAxes
 import mpl_toolkits.axisartist.floating_axes as floating_axes
 import mpl_toolkits.axisartist.grid_finder as grid_finder
@@ -216,6 +214,6 @@ def taylor_diagram_to_ax(
             zorder=5,
         )
         # Annotate centred RMSE next to each point
-        crmse = np.sqrt(1.0 + std_norm ** 2 - 2.0 * std_norm * r)
+        np.sqrt(1.0 + std_norm ** 2 - 2.0 * std_norm * r)
 
     return ax, aux_ax

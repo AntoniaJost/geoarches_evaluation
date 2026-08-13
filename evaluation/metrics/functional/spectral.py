@@ -1,4 +1,3 @@
-from typing import Union
 import pyshtools as pysh
 import xarray as xr
 import numpy as np

@@ -16,7 +16,6 @@ import os
 
 import numpy as np
 import xarray as xr
-from scipy import stats
 from scipy.sparse.linalg import svds as _truncated_svds
 
 logger = logging.getLogger(__name__)

@@ -44,7 +44,6 @@ import os
 import re
 
 import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
 import numpy as np
 import omegaconf
 import pandas as pd
@@ -53,21 +52,13 @@ import matplotlib as mpl
 from matplotlib.colors import CenteredNorm
 from scipy import stats
 
-from metrics import functional
 from metrics.functional import spectral
-from metrics.functional.extremes import (
-    TC_SLP_THRESHOLDS_HPA,
-    TC_INTENSITY_LABELS,
-    WNP_LON,
-    WNP_LAT,
-    detect_tc_candidates,
-    build_tc_tracks,
-    compute_tc_frequency,
-    compute_tc_count_per_year,
-    compute_tc_count_by_intensity,
-    compute_clim_z_dayofyear,
-
-
+from metrics.functional.return_periods import (
+    annual_block_maxima,
+    domain_max_series,
+    empirical_return_periods,
+    fit_gev,
+    return_levels,
 )
 
 mpl.rcParams["mathtext.fontset"] = "dejavusans"
@@ -86,21 +77,16 @@ from metrics.base import (
     _get_model_colors,
     _get_reference_container,
     _log_variable_info,
-    annual_mean,
-    seasonal_mean,
-    instantaneous,
     select_by_time,
-    compute_latitude_weights,
     compute_anomaly,
-    compute_bias,
     compute_eof,
-    compute_correlation_matrix,
     compute_soi,
     detrend_data,
 )
 from geoarches.metrics.metric_base import compute_lat_weights_weatherbench
 from plot.modules import (
     A4_WIDTH,
+    EarthPlotter,
     FrequencyPlotter,
     SOIFrequencyPlotter,
     TimeseriesPlotter,
@@ -357,7 +343,7 @@ class XYMaps(SpatialMetric):
                         self.plotter.plot(
                             x=data,
                             variable_name=var_name,
-                            title=f"",
+                            title="",
                             model_label=model_label,
                             style="imshow",
                             output_path=output_path,
@@ -483,8 +469,8 @@ class TimeLongitudeMap(XYMaps):
         per_member: bool = False,
     ) -> None:
         super().__init__(
-            variables, xdim, ydim, temporal_selection, 
-            frequency, plotter_kwargs, per_member=per_member)
+            variables=variables, xdim=xdim, ydim=ydim, temporal_selection=temporal_selection,
+            frequency=frequency, plotter_kwargs=plotter_kwargs, per_member=per_member)
         self.lat_band = lat_band
 
     def compute(
@@ -1401,7 +1387,8 @@ class XYAnomalyMaps(XYMaps):
         per_member: bool = False,
     ) -> None:
         super().__init__(
-            variables, xdim, ydim, temporal_selection, frequency, plotter_kwargs, per_member=per_member)
+            variables=variables, xdim=xdim, ydim=ydim, temporal_selection=temporal_selection,
+            frequency=frequency, plotter_kwargs=plotter_kwargs, per_member=per_member)
         self.baseline_period = baseline_period
 
     def compute(
@@ -1608,7 +1595,9 @@ class XYTrendMaps(XYMaps):
         plotter_kwargs: dict = None,
         per_member: bool = False,
     ) -> None:
-        super().__init__(variables, xdim, ydim, temporal_selection, frequency, plotter_kwargs, per_member=per_member)
+        super().__init__(
+            variables=variables, xdim=xdim, ydim=ydim, temporal_selection=temporal_selection,
+            frequency=frequency, plotter_kwargs=plotter_kwargs, per_member=per_member)
         self.trend_period = trend_period
 
     def compute(
@@ -2967,7 +2956,7 @@ class MonsoonIndices(BaseMetric):
                     "July": "Jul", "August": "Aug", "September": "Sep",
                     "October": "Oct", "November": "Nov", "December": "Dec",
                 }
-                months_abbr = "/".join(_ABBR.get(m, m[:3]) for m in month_names)
+                "/".join(_ABBR.get(m, m[:3]) for m in month_names)
                 # Display label shown on the plot: bold season name + month abbrevs.
                 display_label = f"{season_label}"
 
@@ -4471,7 +4460,7 @@ class AnnularModes(BaseMetric):
         taylor_colors: dict = {}
         for model_label, (best_r, best_std_ratio, best_key) in _model_best.items():
             if best_key.startswith("m") and best_key[1:].isdigit():
-                member_idx = int(best_key[1:]) + 1
+                int(best_key[1:]) + 1
                 legend_label = f"{model_label}" # (m={member_idx})
             else:
                 legend_label = model_label
@@ -4989,16 +4978,10 @@ class RadialSpectrum(BaseMetric):
 
             all_var_data.append((display_name, "Power Spectral Density", radial_spectra))
 
-        # Plot in groups of ≤3 variables per figure
-        import math
-        n_chunks = math.ceil(len(all_var_data) / 3)
-        #for chunk_idx in range(n_chunks):
-        #    chunk = all_var_data[chunk_idx * 3:(chunk_idx + 1) * 3]
-        #    suffix = f"_part{chunk_idx + 1}" if n_chunks > 1 else ""
         self._freq_plotter.plot_radial_multi(
             var_data=all_var_data,
             colors=colors,
-            fname=f"radial_spectra.pdf",
+            fname="radial_spectra.pdf",
         )
 
 
@@ -5479,15 +5462,139 @@ class Histogram(Distribution):
                     for chunk_idx in range(n_chunks):
                         chunk = all_var_data[chunk_idx * 3:(chunk_idx + 1) * 3]
                         suffix = f"_part{chunk_idx + 1}" if n_chunks > 1 else ""
-                    self.visualize_multi(
-                        var_data=all_var_data,
-                        time_range=time_range,
-                        lat_band=lat_b,
-                        lon_band=lon_b,
-                        out_dir=out_dir,
-                        fname=f"histograms{suffix}.pdf",
-                    )
+                        self.visualize_multi(
+                            var_data=chunk,
+                            time_range=time_range,
+                            lat_band=lat_b,
+                            lon_band=lon_b,
+                            out_dir=out_dir,
+                            fname=f"histograms{suffix}.pdf",
+                        )
 
+class ReturnPeriods(Distribution):
+    """Block-maxima extreme value analysis (GEV) of domain-wide extremes.
+
+    For each variable the field is first reduced to its spatial maximum at
+    every time step (optionally restricted to *lat_band* / *lon_band*), then
+    split into annual block maxima.  Ensemble members are pooled together –
+    more block maxima give a better-constrained fit – before a GEV
+    distribution is fit via :func:`scipy.stats.genextreme.fit`.  A single
+    return-period plot (return level vs. return period, with empirical
+    points overlaid) is produced per variable, overlaying every model on
+    shared axes, alongside a CSV of the fitted parameters and return levels.
+    """
+
+    def __init__(
+        self,
+        variables: list,
+        time: list = None,
+        frequency: str = "daily",
+        lat_band: tuple = None,
+        lon_band: tuple = None,
+        return_periods: list = None,
+        plotter_kwargs: dict = None,
+        per_member: bool = False,
+    ) -> None:
+        super().__init__(
+            variables, time=time, frequency=frequency,
+            lat_band=lat_band, lon_band=lon_band,
+            plotter_kwargs=plotter_kwargs, per_member=per_member,
+        )
+        self.return_periods = np.asarray(
+            return_periods or [2, 5, 10, 20, 50, 100, 200], dtype=float
+        )
+        self.figsize = self.plotter_kwargs.get("figsize", (8, 5))
+        self.dpi = self.plotter_kwargs.get("dpi", 300)
+        self.output_path = self.plotter_kwargs.get("output_path", ".")
+        os.makedirs(self.output_path, exist_ok=True)
+        self.cmor_units = EarthPlotter.cmor_units
+
+    def compute(self, data: xr.DataArray) -> np.ndarray:
+        """Return one block maximum per calendar year (domain max reduced first)."""
+        return annual_block_maxima(domain_max_series(data))
+
+    def visualize(
+        self,
+        distributions: dict,
+        variable_name=("Variable", None),
+        time_range=None,
+        lat_band=None,
+        lon_band=None,
+    ) -> None:
+        name, pressure_level = variable_name
+        fig, ax = plt.subplots(1, 1, figsize=self.figsize, dpi=self.dpi)
+
+        csv_rows = []
+        for label, (samples, color) in distributions.items():
+            samples = samples[np.isfinite(samples)]
+            if samples.size < 3:
+                logger.warning(
+                    f"    Not enough block maxima for '{label}' ({samples.size}) "
+                    f"– skipping GEV fit."
+                )
+                continue
+
+            shape, loc, scale = fit_gev(samples)
+            levels = return_levels(self.return_periods, shape, loc, scale)
+            ax.plot(self.return_periods, levels, color=color, linewidth=1.8, label=label)
+
+            emp_vals, emp_periods = empirical_return_periods(samples)
+            ax.scatter(emp_periods, emp_vals, color=color, s=12, alpha=0.6, zorder=3)
+
+            for period, level in zip(self.return_periods, levels):
+                csv_rows.append({
+                    "model": label,
+                    "return_period_years": period,
+                    "return_level": level,
+                    "gev_shape": shape,
+                    "gev_loc": loc,
+                    "gev_scale": scale,
+                })
+
+        ax.set_xscale("log")
+        ax.set_xticks(self.return_periods)
+        ax.set_xlabel("Return Period (years)", fontsize=10)
+        ax.set_ylabel(self.cmor_units.get(name, ""), fontsize=10)
+        ax.grid(True, which="both", linestyle="-.", linewidth=0.5, alpha=0.5)
+        ax.tick_params(axis="both", which="major", labelsize=8)
+
+        var_display = _long_var_label(name, pressure_level)
+        ax.text(
+            0.0, 1.01, var_display, fontsize=10, ha="left", va="bottom",
+            transform=ax.transAxes,
+        )
+        annot = _build_selection_annotation(lat_band=lat_band, lon_band=lon_band, time_range=time_range)
+        if annot:
+            ax.text(
+                1.0, 1.01, annot, transform=ax.transAxes, fontsize=10,
+                va="bottom", ha="right",
+            )
+        if distributions:
+            ax.legend(
+                loc="upper center", bbox_to_anchor=(0.5, -0.15),
+                ncol=min(len(distributions), 4), fontsize=8, framealpha=0.8,
+            )
+
+        if pressure_level is None:
+            var_fname = name
+        else:
+            var_fname = f"{name}_{int(round(pressure_level / 100))}hPa"
+
+        time_dir = f"{time_range[0]}_{time_range[1]}" if time_range is not None else "all_times"
+        latlon_d = _latlon_dir(lat_band, lon_band)
+        out_dir = os.path.join(self.output_path, time_dir, latlon_d, var_fname)
+        os.makedirs(out_dir, exist_ok=True)
+
+        plt.tight_layout()
+        fpath = os.path.join(out_dir, f"return_periods_{var_fname}.pdf")
+        plt.savefig(fpath, bbox_inches="tight", dpi=self.dpi)
+        plt.close(fig)
+        logger.info(f"    Saved return-period plot: {fpath}")
+
+        if csv_rows:
+            csv_path = os.path.join(out_dir, f"return_levels_{var_fname}.csv")
+            pd.DataFrame(csv_rows).to_csv(csv_path, index=False)
+            logger.info(f"    Saved return levels CSV: {csv_path}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════

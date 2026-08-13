@@ -32,6 +32,7 @@ from metrics.module import (
     RadialSpectrum,
     Distribution,
     Histogram,
+    ReturnPeriods,
 )
 
 __all__ = [
@@ -71,4 +72,5 @@ __all__ = [
     # Distribution
     "Distribution",
     "Histogram",
+    "ReturnPeriods",
 ]

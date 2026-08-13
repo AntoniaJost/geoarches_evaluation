@@ -1,6 +1,5 @@
 import hydra
 from evaltools.module import GeoClimate
-from pprint import pprint as pp
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")

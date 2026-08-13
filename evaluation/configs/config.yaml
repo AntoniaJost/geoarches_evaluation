@@ -7,7 +7,7 @@ defaults:
 generic:
   restrict_to_time_range: ["1979-01-01", "2014-12-31"]
 
-output_path: "./evalstore/results/ClimatologyWUnforced/Paper/1979-2014"
+output_path: "./evalstore/results/ClimatologyWUnforced/Paper/Test"
 latitude: 181
 
 

@@ -1,4 +1,3 @@
-import itertools
 import logging
 import numpy as np
 import math
@@ -10,14 +9,11 @@ import matplotlib.ticker as mticker
 
 from matplotlib import patches as mpatches
 from matplotlib.colors import CenteredNorm, LinearSegmentedColormap, ListedColormap, BoundaryNorm
-from matplotlib import path as mpath
 
 import cartopy.crs as ccrs
 
 from cartopy import feature as cfeature
 
-from geoarches.dataloaders.era5 import surface_variables_short, level_variables_short
-from seaborn import colors
 
 # A4 single-column text width in inches.
 A4_WIDTH = 6.7
@@ -320,7 +316,7 @@ def azimuthal_equidistant_projection_plot(
     #ticks = levels.tolist()
     
     ticks = np.arange(_vmin_use, _vmax_use + 2, 2).tolist()
-    ticks_ids = np.arange(0, 2 * _halfrange + 2, 2).tolist()
+    np.arange(0, 2 * _halfrange + 2, 2).tolist()
     # Set colorbar ticklabels fontsize to 16
     #if 0.0 not in ticks:
     #    ticks.append(0.0)
@@ -400,7 +396,6 @@ def azimuthal_equidistant_multi_plot(
     levels = levels[levels != 0.]
     _cmap = get_custom_cmap(levels, base_name="bwr")
 
-    subplot_size = A4_WIDTH
     row_size = A4_WIDTH / ncols
     figsize = (A4_WIDTH, row_size * nrows + 0.8)
     fig, axes = plt.subplots(

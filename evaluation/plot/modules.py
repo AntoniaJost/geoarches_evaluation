@@ -3,10 +3,7 @@ import logging
 import math
 import os
 
-from seaborn import colors
 from plot.functional import timeseries, spatial, spectra, stats
-from plot.projections import CartopyProjectionPlotter  # re-exported for convenience
-from typing import List, Union
 import xarray as xr
 import numpy as np
 from matplotlib.colors import BoundaryNorm, LinearSegmentedColormap, ListedColormap
@@ -288,7 +285,7 @@ class SpatialPlotter(EarthPlotter):
                 #)
                 pass
 
-            gl = ax.gridlines(draw_labels=False, linewidth=0.2, alpha=0.3)
+            ax.gridlines(draw_labels=False, linewidth=0.2, alpha=0.3)
 
         if title and axes:
             # Use geographic placement like spatial.contourf(infobox_geographic=True):
@@ -370,7 +367,7 @@ class SpatialPlotter(EarthPlotter):
         proj = ccrs.Robinson(central_longitude=180.0)
 
         # Total figure width = A4_WIDTH; height = 2 inches per model row.
-        cell_w = A4_WIDTH / max(n_cols, 1)
+        A4_WIDTH / max(n_cols, 1)
         cell_h = 2.0
         fig_w = A4_WIDTH
         fig_h = cell_h * n_rows
@@ -664,7 +661,6 @@ class FrequencyPlotter(EarthPlotter):
         fname :
             Output filename relative to ``self.output_path``.
         """
-        import math
         n = len(var_data)
         n_cols = 2
         n_rows = n // n_cols + int(n % n_cols > 0)
@@ -1157,7 +1153,7 @@ class TimeseriesPlotter(EarthPlotter):
             ``'time'`` coordinate.  Plain ``(time, data)`` tuples are also
             accepted for backward compatibility.
         """
-        n = len(model_data)
+        len(model_data)
         fig, axes = plt.subplots(1, 1, figsize=(A4_WIDTH, 3.6),
                                  dpi=300, squeeze=False)
 
@@ -1470,22 +1466,6 @@ class LatitudinalProfilePlotter(EarthPlotter):
         )
         plt.savefig(os.path.join(target_dir, fname), dpi=self.dpi, bbox_inches="tight")
         plt.close(fig)
-
-class SOIDashboard:
-    # This class creates a dashboard of multiple SOI-related plots (timeseries, PSD, regression plots)
-    def __init__(self, dpi=300, width=6.7):
-        self.dpi = dpi
-        self.width = width
-
-    def create_dashboard(self, num_regression_plots):
-        height_figsize = num_regression_plots * 1.5
-        mosaic = [["a)", "c)"]["a)", "d)"]["b)", "e)"]["b)", "f)"]]
-        fig, axes = plt.subplot_mosaic(
-            mosaic, 
-            figsize=(self.width, height_figsize), 
-            dpi=self.dpi
-        )
-        
 
 class TaylorDiagramPlotter(EarthPlotter):
     """
